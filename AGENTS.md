@@ -1,4 +1,4 @@
-# openwispr — Claude guide
+# openwispr — AGENTS guide
 
 This file is loaded into every Claude session that works under `~/openwispr/`. It exists to give the next agent enough context to make a correct change without re-deriving everything.
 
@@ -27,12 +27,12 @@ When the user asks for a new piece (PWA, shared library, etc.):
 2. Inside it, initialize the appropriate build system (`npm init -y` for Node/web, `cargo init` for Rust, etc.).
 3. Add a one-page `README.md` describing what it is and how to run/build.
 4. If it shares logic with the desktop app (e.g., the Groq transcription pipeline in `desktop/recorder.js`), extract that logic into `~/openwispr/shared/` first and import from both — don't duplicate.
-5. Add a section to this `CLAUDE.md` documenting the new sub-project's quirks.
+5. Add a section to this `AGENTS.md` documenting the new sub-project's quirks.
 6. Wire any cross-project commands at the workspace root if useful (e.g., a top-level `package.json` with `workspaces` for npm sub-projects).
 
 ```
 ~/openwispr/
-├── CLAUDE.md            # this file
+├── AGENTS.md            # this file
 ├── desktop/             # Electron app
 │   ├── main.js
 │   ├── preload.js
