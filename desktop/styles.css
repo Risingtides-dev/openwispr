@@ -1,0 +1,93 @@
+* { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+html, body { background: transparent; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; overflow: hidden; }
+
+#widget {
+  width: 148px;
+  height: 56px;
+  margin: 4px;
+  background: rgba(20, 20, 24, 0.85);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  color: #e9e9ee;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  transition: background 180ms ease, border-color 180ms ease;
+  overflow: hidden;
+  cursor: grab;
+}
+#widget.dragging { cursor: grabbing; }
+
+.indicator {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.viz {
+  position: absolute;
+  inset: 0;
+  width: 36px;
+  height: 36px;
+  display: none;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #6b7280;
+  flex-shrink: 0;
+  transition: background 180ms ease, box-shadow 180ms ease;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #c7c7d1;
+  opacity: 0.9;
+  margin-left: auto;
+  text-transform: lowercase;
+}
+
+#widget.state-recording {
+  background: rgba(50, 12, 16, 0.92);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+#widget.state-recording .dot { display: none; }
+#widget.state-recording .viz { display: block; }
+#widget.state-recording .label { color: #fca5a5; }
+
+#widget.state-processing .dot {
+  background: #fbbf24;
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.7);
+  animation: pulse 900ms ease-in-out infinite;
+}
+#widget.state-processing .label { color: #fde68a; }
+
+#widget.state-done .dot {
+  background: #22c55e;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.6);
+}
+#widget.state-done .label { color: #bbf7d0; }
+
+#widget.state-error .dot {
+  background: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+}
+#widget.state-error .label { color: #fecaca; }
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.25); opacity: 0.7; }
+}

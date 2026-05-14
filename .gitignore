@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build output
+desktop/dist/
+
+# OS noise
+.DS_Store
+*.log
+
+# Editor noise
+.vscode/
+.idea/
+
+# Local secrets (none today, but cheap insurance)
+.env
+.env.*
+*.pem
+*.key

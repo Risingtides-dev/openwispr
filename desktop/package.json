@@ -1,0 +1,47 @@
+{
+  "name": "openwispr",
+  "version": "0.1.0",
+  "description": "Tiny floating widget that records, transcribes, cleans up, and pastes at cursor.",
+  "main": "main.js",
+  "author": {
+    "name": "smathdaddy"
+  },
+  "scripts": {
+    "start": "electron .",
+    "icon": "node build/make-icon.js && iconutil -c icns build/icon.iconset -o build/icon.icns",
+    "dist": "electron-builder --mac"
+  },
+  "build": {
+    "appId": "dev.smathdaddy.openwispr",
+    "productName": "openwispr",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "recorder.js",
+      "index.html",
+      "settings.html",
+      "styles.css",
+      "package.json"
+    ],
+    "mac": {
+      "target": "dir",
+      "icon": "build/icon.icns",
+      "category": "public.app-category.productivity",
+      "extendInfo": {
+        "LSUIElement": false,
+        "NSMicrophoneUsageDescription": "openwispr needs the microphone to record your voice for transcription.",
+        "NSAppleEventsUsageDescription": "openwispr uses System Events to paste transcribed text at your cursor."
+      }
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^26.8.1",
+    "sharp": "^0.34.5"
+  }
+}

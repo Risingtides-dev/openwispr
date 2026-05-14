@@ -1,0 +1,887 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>openwispr</title>
+  <script src="recorder.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+      background: #1c1c1f;
+      color: #ececf1;
+      font-size: 13px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 14px 22px 0;
+      border-bottom: 1px solid #2a2a30;
+    }
+    .brand {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: #c7c7d1;
+      text-transform: lowercase;
+    }
+    .tabs { display: flex; gap: 2px; margin-left: 4px; }
+    .tab {
+      background: transparent;
+      border: 0;
+      color: #7a7a84;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 120ms ease, border-color 120ms ease;
+      font-family: inherit;
+      letter-spacing: 0.02em;
+    }
+    .tab:hover { color: #c7c7d1; }
+    .tab.active { color: #ececf1; border-bottom-color: #6366f1; }
+    .pane { flex: 1; overflow: hidden; display: none; }
+    .pane.active { display: flex; }
+
+    /* === NOTES === */
+    .notes-sidebar {
+      width: 240px;
+      flex-shrink: 0;
+      border-right: 1px solid #2a2a30;
+      display: flex;
+      flex-direction: column;
+      background: #18181b;
+    }
+    .new-note-btn {
+      margin: 12px;
+      padding: 8px 12px;
+      background: #2a2a30;
+      color: #c7c7d1;
+      border: 1px solid #3a3a42;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 120ms ease, color 120ms ease;
+    }
+    .new-note-btn:hover { background: #3a3a42; color: #ececf1; }
+    .notes-list { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+    .note-item {
+      padding: 10px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 2px;
+      transition: background 100ms ease;
+    }
+    .note-item:hover { background: #232328; }
+    .note-item.active { background: #2a2a32; }
+    .note-item .ni-title { font-size: 12px; color: #ececf1; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .note-item .ni-meta { font-size: 11px; color: #6a6a74; margin-top: 2px; }
+    .empty-state {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #6a6a74;
+      font-size: 13px;
+      padding: 40px;
+      text-align: center;
+    }
+
+    .note-editor {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 18px 22px;
+      gap: 12px;
+      overflow: hidden;
+    }
+    .note-title {
+      background: transparent;
+      border: 0;
+      color: #ececf1;
+      font-size: 18px;
+      font-weight: 600;
+      font-family: inherit;
+      padding: 0;
+      outline: none;
+    }
+    .note-title::placeholder { color: #4a4a52; }
+    .note-body {
+      flex: 1;
+      background: transparent;
+      border: 0;
+      color: #d4d4dd;
+      font-size: 14px;
+      line-height: 1.55;
+      font-family: inherit;
+      resize: none;
+      outline: none;
+      padding: 0;
+    }
+    .note-body::placeholder { color: #4a4a52; }
+    .note-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #2a2a30;
+    }
+    .rec-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: #ef4444;
+      color: white;
+      border: 0;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 120ms ease, transform 80ms ease;
+    }
+    .rec-btn:hover { background: #dc2626; }
+    .rec-btn:active { transform: scale(0.97); }
+    .rec-btn.recording { background: #1c1c1f; border: 1px solid #ef4444; color: #fca5a5; animation: recPulse 1.4s ease-in-out infinite; }
+    .rec-btn.processing { background: #2a2a30; color: #fbbf24; border: 1px solid #fbbf24; }
+    .rec-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: white;
+    }
+    .rec-btn.recording .rec-dot { background: #ef4444; animation: dotPulse 800ms ease-in-out infinite; }
+    .rec-timer { font-size: 12px; color: #7a7a84; font-variant-numeric: tabular-nums; }
+    .delete-btn {
+      margin-left: auto;
+      background: transparent;
+      color: #6a6a74;
+      border: 0;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 6px 8px;
+      font-family: inherit;
+    }
+    .delete-btn:hover { color: #ef4444; }
+    @keyframes recPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+      50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+    }
+    @keyframes dotPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* === HISTORY === */
+    .pane-history-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .history-header {
+      display: flex;
+      align-items: center;
+      padding: 14px 22px;
+      border-bottom: 1px solid #2a2a30;
+      gap: 12px;
+    }
+    .history-count { font-size: 12px; color: #7a7a84; }
+    .clear-btn {
+      margin-left: auto;
+      background: transparent;
+      color: #6a6a74;
+      border: 0;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 6px 8px;
+      font-family: inherit;
+    }
+    .clear-btn:hover { color: #ef4444; }
+    .history-list { flex: 1; overflow-y: auto; padding: 8px 22px 22px; }
+    .hist-item {
+      padding: 14px 0;
+      border-bottom: 1px solid #232328;
+    }
+    .hist-item:last-child { border-bottom: 0; }
+    .hist-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+      font-size: 11px;
+      color: #6a6a74;
+    }
+    .hist-time { font-variant-numeric: tabular-nums; }
+    .hist-actions { margin-left: auto; display: flex; gap: 4px; opacity: 0; transition: opacity 120ms ease; }
+    .hist-item:hover .hist-actions { opacity: 1; }
+    .hist-actions button {
+      background: transparent;
+      border: 0;
+      color: #6a6a74;
+      cursor: pointer;
+      font-size: 11px;
+      padding: 4px 6px;
+      font-family: inherit;
+      border-radius: 4px;
+    }
+    .hist-actions button:hover { background: #2a2a30; color: #ececf1; }
+    .hist-text { font-size: 13px; color: #d4d4dd; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+
+    /* === SETTINGS === */
+    .pane-settings-wrap {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px 28px 28px;
+    }
+    h2 { font-size: 14px; font-weight: 600; margin: 0 0 4px; color: #ececf1; }
+    .sub { color: #9a9aa3; margin-bottom: 18px; font-size: 12px; }
+    label { display: block; font-weight: 500; margin: 14px 0 6px; color: #c5c5cd; font-size: 12px; text-transform: lowercase; letter-spacing: 0.04em; }
+    input[type="text"], input[type="password"], textarea, select {
+      width: 100%;
+      padding: 8px 10px;
+      background: #2a2a30;
+      border: 1px solid #3a3a42;
+      border-radius: 6px;
+      color: #ececf1;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    textarea { resize: vertical; min-height: 110px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; line-height: 1.5; }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: #6366f1; }
+    .row { display: flex; gap: 12px; align-items: flex-start; }
+    .row > * { flex: 1; }
+    .help { font-size: 11px; color: #7a7a84; margin-top: 4px; line-height: 1.5; }
+    .help a { color: #a5b4fc; text-decoration: none; }
+    .help a:hover { text-decoration: underline; }
+    .hotkey-row { display: flex; align-items: center; gap: 12px; }
+    .hotkey-btn {
+      font-family: ui-monospace, Menlo, monospace;
+      font-size: 14px;
+      padding: 10px 16px;
+      min-width: 140px;
+      background: #2a2a30;
+      border: 1px solid #3a3a42;
+      border-radius: 8px;
+      color: #ececf1;
+      cursor: pointer;
+      text-align: center;
+      letter-spacing: 0.04em;
+      transition: border-color 120ms ease, background 120ms ease;
+    }
+    .hotkey-btn:hover { border-color: #4a4a52; }
+    .hotkey-btn.capturing {
+      border-color: #6366f1;
+      background: #1e1e2a;
+      color: #c7d2fe;
+      animation: pulseBorder 1.2s ease-in-out infinite;
+    }
+    .hotkey-btn.error { border-color: #ef4444; background: #2a1518; color: #fca5a5; }
+    .hotkey-clear {
+      background: transparent;
+      color: #7a7a84;
+      border: 0;
+      padding: 6px 8px;
+      cursor: pointer;
+      font-size: 12px;
+      font-family: inherit;
+    }
+    .hotkey-clear:hover { color: #ececf1; }
+    .hotkey-msg { font-size: 12px; margin-top: 6px; min-height: 14px; }
+    .hotkey-msg.ok { color: #4ade80; }
+    .hotkey-msg.err { color: #fca5a5; }
+    @keyframes pulseBorder {
+      0%, 100% { border-color: #6366f1; box-shadow: 0 0 0 0 rgba(99,102,241,0.4); }
+      50% { border-color: #818cf8; box-shadow: 0 0 0 4px rgba(99,102,241,0.1); }
+    }
+    .toggle-row { display: flex; align-items: center; gap: 10px; margin: 14px 0 4px; }
+    .toggle-row label { margin: 0; text-transform: none; letter-spacing: 0; }
+    .save-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 22px;
+      padding-top: 16px;
+      border-top: 1px solid #2a2a30;
+    }
+    .save-btn {
+      background: #6366f1;
+      color: white;
+      border: 0;
+      padding: 9px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .save-btn:hover { background: #4f46e5; }
+    .status { font-size: 12px; color: #4ade80; min-height: 16px; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">openwispr</div>
+    <div class="tabs">
+      <button class="tab" data-tab="notes">Notes</button>
+      <button class="tab" data-tab="history">History</button>
+      <button class="tab" data-tab="settings">Settings</button>
+    </div>
+  </div>
+
+  <!-- NOTES -->
+  <div class="pane" id="pane-notes">
+    <aside class="notes-sidebar">
+      <button class="new-note-btn" id="newNoteBtn">+ new note</button>
+      <div class="notes-list" id="notesList"></div>
+    </aside>
+    <main class="note-editor" id="noteEditor" style="display:none;">
+      <input class="note-title" id="noteTitle" placeholder="Untitled note" />
+      <textarea class="note-body" id="noteBody" placeholder="Type, or hit record to dictate…"></textarea>
+      <div class="note-actions">
+        <button class="rec-btn" id="recBtn">
+          <span class="rec-dot"></span>
+          <span class="rec-label">record</span>
+        </button>
+        <span class="rec-timer" id="recTimer"></span>
+        <button class="delete-btn" id="deleteNoteBtn">delete note</button>
+      </div>
+    </main>
+    <div class="empty-state" id="noteEmpty">
+      <div>No note selected.<br/>Click "new note" to start.</div>
+    </div>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="pane" id="pane-history">
+    <div class="pane-history-wrap">
+      <div class="history-header">
+        <div class="history-count" id="historyCount"></div>
+        <button class="clear-btn" id="clearHistoryBtn">clear all</button>
+      </div>
+      <div class="history-list" id="historyList"></div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="pane" id="pane-settings">
+    <div class="pane-settings-wrap">
+      <h2>Settings</h2>
+      <div class="sub">Tap the hotkey or double-click the widget to record.</div>
+
+      <label>Groq API key</label>
+      <input id="apiKey" type="password" placeholder="gsk_..." autocomplete="off" />
+      <div class="help">Get one free at <a href="#" id="groqLink">console.groq.com/keys</a>. Used for both Whisper transcription and the cleanup model.</div>
+
+      <label>Hotkey</label>
+      <div class="hotkey-row">
+        <button id="hotkeyBtn" class="hotkey-btn" type="button">⌘⇧;</button>
+        <button id="hotkeyClear" class="hotkey-clear" type="button" title="Remove hotkey">clear</button>
+      </div>
+      <div id="hotkeyMsg" class="hotkey-msg"></div>
+      <div class="help">Click, then press your combo. Reserved macOS shortcuts are blocked.</div>
+
+      <div class="row">
+        <div>
+          <label>Transcription</label>
+          <select id="transcribeModel">
+            <option value="whisper-large-v3-turbo">whisper-large-v3-turbo · fast</option>
+            <option value="whisper-large-v3">whisper-large-v3 · accurate</option>
+          </select>
+          <div class="help" id="transcribeHelp"></div>
+        </div>
+        <div>
+          <label>Cleanup</label>
+          <select id="cleanupModel">
+            <option value="openai/gpt-oss-20b">gpt-oss-20b · fastest</option>
+            <option value="llama-3.1-8b-instant">llama-3.1-8b</option>
+            <option value="openai/gpt-oss-120b">gpt-oss-120b · smart</option>
+            <option value="llama-3.3-70b-versatile">llama-3.3-70b · smartest</option>
+          </select>
+          <div class="help" id="cleanupHelp"></div>
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <input type="checkbox" id="cleanupEnabled" />
+        <label for="cleanupEnabled">Run LLM cleanup on transcript (fix grammar, punctuation, fillers)</label>
+      </div>
+
+      <div class="toggle-row">
+        <input type="checkbox" id="pasteOnFinish" />
+        <label for="pasteOnFinish">Auto-paste at cursor (otherwise just copy to clipboard)</label>
+      </div>
+
+      <label>Custom vocabulary</label>
+      <textarea id="vocabulary" placeholder="Claude Code, Codex, cobrand, openwispr, Anthropic" style="min-height: 60px;"></textarea>
+      <div class="help">Comma-separated terms you say often. Biases Whisper toward these spellings.</div>
+
+      <label>Cleanup prompt</label>
+      <textarea id="cleanupPrompt"></textarea>
+      <div class="help">Tune the cleanup behavior. The transcript is sent as the user message wrapped in &lt;transcript&gt; tags.</div>
+
+      <div class="save-row">
+        <button class="save-btn" id="save">Save</button>
+        <span class="status" id="status"></span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+    let current = null;
+    let activeTab = 'notes';
+
+    /* ===== TABS ===== */
+    function showTab(name) {
+      if (!['notes', 'history', 'settings'].includes(name)) name = 'notes';
+      activeTab = name;
+      document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
+      document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('active', p.id === `pane-${name}`));
+      if (name === 'notes') loadNotes();
+      if (name === 'history') loadHistory();
+    }
+    document.querySelectorAll('.tab').forEach((t) => {
+      t.addEventListener('click', () => showTab(t.dataset.tab));
+    });
+    window.api.onFocusTab((tab) => showTab(tab));
+
+    /* ===== NOTES ===== */
+    let notes = [];
+    let activeNoteId = null;
+    let saveTimer = null;
+
+    function fmtDate(ts) {
+      const d = new Date(ts);
+      const now = new Date();
+      const sameDay = d.toDateString() === now.toDateString();
+      if (sameDay) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const sameYear = d.getFullYear() === now.getFullYear();
+      return d.toLocaleDateString([], sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function noteSummary(n) {
+      const t = (n.title || '').trim();
+      if (t) return t;
+      const b = (n.body || '').trim();
+      if (!b) return 'Untitled';
+      const firstLine = b.split('\n')[0].slice(0, 60);
+      return firstLine || 'Untitled';
+    }
+
+    async function loadNotes() {
+      notes = await window.api.notes.list();
+      renderNotesList();
+      if (!notes.find((n) => n.id === activeNoteId)) {
+        activeNoteId = notes[0]?.id || null;
+      }
+      renderNoteEditor();
+    }
+
+    function renderNotesList() {
+      const list = el('notesList');
+      list.innerHTML = '';
+      if (notes.length === 0) {
+        list.innerHTML = '<div style="padding: 16px 12px; font-size: 12px; color: #6a6a74;">No notes yet.</div>';
+        return;
+      }
+      for (const n of notes) {
+        const div = document.createElement('div');
+        div.className = 'note-item' + (n.id === activeNoteId ? ' active' : '');
+        div.innerHTML = `<div class="ni-title"></div><div class="ni-meta"></div>`;
+        div.querySelector('.ni-title').textContent = noteSummary(n);
+        div.querySelector('.ni-meta').textContent = fmtDate(n.updatedAt);
+        div.addEventListener('click', () => {
+          activeNoteId = n.id;
+          renderNotesList();
+          renderNoteEditor();
+        });
+        list.appendChild(div);
+      }
+    }
+
+    function renderNoteEditor() {
+      const note = notes.find((n) => n.id === activeNoteId);
+      if (!note) {
+        el('noteEditor').style.display = 'none';
+        el('noteEmpty').style.display = 'flex';
+        return;
+      }
+      el('noteEditor').style.display = 'flex';
+      el('noteEmpty').style.display = 'none';
+      el('noteTitle').value = note.title || '';
+      el('noteBody').value = note.body || '';
+    }
+
+    function scheduleSave() {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(saveActiveNote, 400);
+    }
+
+    async function saveActiveNote() {
+      if (!activeNoteId) return;
+      const updated = await window.api.notes.update(activeNoteId, {
+        title: el('noteTitle').value,
+        body: el('noteBody').value
+      });
+      if (!updated) return;
+      const i = notes.findIndex((n) => n.id === activeNoteId);
+      if (i >= 0) notes[i] = updated;
+      renderNotesList();
+    }
+
+    el('noteTitle').addEventListener('input', scheduleSave);
+    el('noteBody').addEventListener('input', scheduleSave);
+
+    el('newNoteBtn').addEventListener('click', async () => {
+      const note = await window.api.notes.create();
+      notes.unshift(note);
+      activeNoteId = note.id;
+      renderNotesList();
+      renderNoteEditor();
+      el('noteTitle').focus();
+    });
+
+    el('deleteNoteBtn').addEventListener('click', async () => {
+      if (!activeNoteId) return;
+      const note = notes.find((n) => n.id === activeNoteId);
+      if (!confirm(`Delete "${noteSummary(note)}"?`)) return;
+      await window.api.notes.delete(activeNoteId);
+      notes = notes.filter((n) => n.id !== activeNoteId);
+      activeNoteId = notes[0]?.id || null;
+      renderNotesList();
+      renderNoteEditor();
+    });
+
+    /* ===== NOTE RECORDING ===== */
+    let recState = 'idle';
+    let recStream = null;
+    let recMediaRecorder = null;
+    let recChunks = [];
+    let recTimerId = null;
+    let recStartTs = 0;
+
+    function setRecState(state, label) {
+      recState = state;
+      const btn = el('recBtn');
+      btn.classList.remove('recording', 'processing');
+      if (state === 'recording') btn.classList.add('recording');
+      if (state === 'processing') btn.classList.add('processing');
+      btn.querySelector('.rec-label').textContent = label;
+    }
+
+    function startTimer() {
+      recStartTs = Date.now();
+      tickTimer();
+      recTimerId = setInterval(tickTimer, 1000);
+    }
+    function tickTimer() {
+      const elapsed = Math.floor((Date.now() - recStartTs) / 1000);
+      const m = Math.floor(elapsed / 60);
+      const s = elapsed % 60;
+      el('recTimer').textContent = `${m}:${s.toString().padStart(2, '0')}`;
+    }
+    function stopTimer() {
+      if (recTimerId) clearInterval(recTimerId);
+      recTimerId = null;
+      el('recTimer').textContent = '';
+    }
+
+    async function startNoteRecording() {
+      current = await window.api.getConfig();
+      if (!current.groqApiKey) {
+        alert('Set your Groq API key in Settings first.');
+        showTab('settings');
+        return;
+      }
+      try {
+        recStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        });
+      } catch (e) {
+        alert('Microphone access denied. Allow it in System Settings → Privacy & Security → Microphone.');
+        return;
+      }
+      recChunks = [];
+      recMediaRecorder = new MediaRecorder(recStream, { mimeType: 'audio/webm' });
+      recMediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recChunks.push(e.data); };
+      recMediaRecorder.onstop = onNoteRecStop;
+      recMediaRecorder.start();
+      setRecState('recording', 'stop');
+      startTimer();
+    }
+
+    function stopNoteRecording() {
+      if (!recMediaRecorder) return;
+      stopTimer();
+      setRecState('processing', 'thinking…');
+      recMediaRecorder.stop();
+    }
+
+    async function onNoteRecStop() {
+      try {
+        const blob = new Blob(recChunks, { type: 'audio/webm' });
+        recStream.getTracks().forEach((t) => t.stop());
+        recStream = null;
+
+        if (blob.size < 1000) {
+          setRecState('idle', 'record');
+          return;
+        }
+
+        const raw = (await window.openwispr.transcribeBlob(blob, current)).trim();
+        if (!raw) {
+          setRecState('idle', 'record');
+          return;
+        }
+        let final = raw;
+        if (current.cleanupEnabled) {
+          try { final = await window.openwispr.cleanupText(raw, current); } catch (e) { console.error(e); }
+        }
+
+        // Append to current note body, preserve cursor-ish behavior
+        const body = el('noteBody');
+        const existing = body.value;
+        const sep = existing && !existing.endsWith('\n') ? (existing.endsWith(' ') ? '' : ' ') : '';
+        body.value = existing + sep + final;
+        scheduleSave();
+
+        setRecState('idle', 'record');
+      } catch (e) {
+        console.error('Note recording error:', e);
+        alert('Recording failed: ' + e.message);
+        setRecState('idle', 'record');
+      }
+    }
+
+    el('recBtn').addEventListener('click', () => {
+      if (recState === 'idle') startNoteRecording();
+      else if (recState === 'recording') stopNoteRecording();
+    });
+
+    /* ===== HISTORY ===== */
+    function fmtFullDate(ts) {
+      const d = new Date(ts);
+      return d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+
+    async function loadHistory() {
+      const items = await window.api.transcripts.list();
+      el('historyCount').textContent = `${items.length} dictation${items.length === 1 ? '' : 's'}`;
+      const list = el('historyList');
+      list.innerHTML = '';
+      if (items.length === 0) {
+        list.innerHTML = '<div class="empty-state" style="height: 200px;">Your past dictations will appear here.</div>';
+        return;
+      }
+      for (const t of items) {
+        const div = document.createElement('div');
+        div.className = 'hist-item';
+        const meta = document.createElement('div');
+        meta.className = 'hist-meta';
+        const time = document.createElement('span');
+        time.className = 'hist-time';
+        time.textContent = fmtFullDate(t.createdAt);
+        meta.appendChild(time);
+        const actions = document.createElement('div');
+        actions.className = 'hist-actions';
+        const copyBtn = document.createElement('button');
+        copyBtn.textContent = 'copy';
+        copyBtn.addEventListener('click', async () => {
+          await navigator.clipboard.writeText(t.text);
+          copyBtn.textContent = 'copied';
+          setTimeout(() => { copyBtn.textContent = 'copy'; }, 900);
+        });
+        const delBtn = document.createElement('button');
+        delBtn.textContent = '×';
+        delBtn.title = 'Delete';
+        delBtn.addEventListener('click', async () => {
+          await window.api.transcripts.delete(t.id);
+          loadHistory();
+        });
+        actions.appendChild(copyBtn);
+        actions.appendChild(delBtn);
+        meta.appendChild(actions);
+        const text = document.createElement('div');
+        text.className = 'hist-text';
+        text.textContent = t.text;
+        div.appendChild(meta);
+        div.appendChild(text);
+        list.appendChild(div);
+      }
+    }
+
+    el('clearHistoryBtn').addEventListener('click', async () => {
+      if (!confirm('Delete all transcripts? This cannot be undone.')) return;
+      await window.api.transcripts.clear();
+      loadHistory();
+    });
+
+    /* ===== SETTINGS ===== */
+    let capturing = false;
+
+    const MODEL_DETAILS = {
+      'whisper-large-v3-turbo': '216× realtime · 12% WER · $0.04/hr',
+      'whisper-large-v3': '189× realtime · 10.3% WER · $0.111/hr',
+      'openai/gpt-oss-20b': '~1000 tok/sec · OpenAI open weights',
+      'llama-3.1-8b-instant': '~560 tok/sec · Meta',
+      'openai/gpt-oss-120b': '~500 tok/sec · OpenAI open weights, smarter',
+      'llama-3.3-70b-versatile': '~280 tok/sec · most accurate, slowest'
+    };
+
+    function formatAccelerator(acc) {
+      if (!acc) return 'none';
+      return acc
+        .replace(/CommandOrControl|Command|Cmd|Meta/gi, '⌘')
+        .replace(/Control|Ctrl/gi, '⌃')
+        .replace(/Option|Alt/gi, '⌥')
+        .replace(/Shift/gi, '⇧')
+        .replace(/\+/g, '');
+    }
+
+    function updateHelps() {
+      el('transcribeHelp').textContent = MODEL_DETAILS[el('transcribeModel').value] || '';
+      el('cleanupHelp').textContent = MODEL_DETAILS[el('cleanupModel').value] || '';
+    }
+
+    async function loadSettings() {
+      current = await window.api.getConfig();
+      el('apiKey').value = current.groqApiKey || '';
+      el('hotkeyBtn').textContent = formatAccelerator(current.hotkey);
+      el('transcribeModel').value = current.transcribeModel || 'whisper-large-v3-turbo';
+      el('cleanupModel').value = current.cleanupModel || 'openai/gpt-oss-20b';
+      el('cleanupEnabled').checked = current.cleanupEnabled !== false;
+      el('pasteOnFinish').checked = current.pasteOnFinish !== false;
+      el('vocabulary').value = current.vocabulary || '';
+      el('cleanupPrompt').value = current.cleanupPrompt || '';
+      updateHelps();
+    }
+
+    el('transcribeModel').addEventListener('change', updateHelps);
+    el('cleanupModel').addEventListener('change', updateHelps);
+
+    el('save').addEventListener('click', async () => {
+      const next = {
+        groqApiKey: el('apiKey').value.trim(),
+        transcribeModel: el('transcribeModel').value,
+        cleanupModel: el('cleanupModel').value,
+        cleanupEnabled: el('cleanupEnabled').checked,
+        pasteOnFinish: el('pasteOnFinish').checked,
+        vocabulary: el('vocabulary').value.trim(),
+        cleanupPrompt: el('cleanupPrompt').value
+      };
+      current = await window.api.saveConfig(next);
+      el('status').textContent = 'saved';
+      setTimeout(() => { el('status').textContent = ''; }, 1500);
+    });
+
+    el('groqLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.api.openExternal('https://console.groq.com/keys');
+    });
+
+    function setMsg(text, kind) {
+      const m = el('hotkeyMsg');
+      m.textContent = text || '';
+      m.className = 'hotkey-msg' + (kind ? ' ' + kind : '');
+    }
+
+    function beginCapture() {
+      if (capturing) return;
+      capturing = true;
+      window.api.beginHotkeyCapture();
+      el('hotkeyBtn').classList.add('capturing');
+      el('hotkeyBtn').classList.remove('error');
+      el('hotkeyBtn').textContent = 'press keys…';
+      setMsg('Esc to cancel', '');
+    }
+    function endCapture() {
+      capturing = false;
+      el('hotkeyBtn').classList.remove('capturing');
+      window.api.endHotkeyCapture();
+    }
+    function mapKey(e) {
+      const c = e.code;
+      if (c.startsWith('Key')) return c.slice(3);
+      if (c.startsWith('Digit')) return c.slice(5);
+      if (/^F\d+$/.test(c)) return c;
+      const map = {
+        Space: 'Space', Enter: 'Return', Tab: 'Tab', Backspace: 'Backspace',
+        Delete: 'Delete', Escape: 'Escape',
+        Semicolon: ';', Comma: ',', Period: '.', Slash: '/', Backslash: '\\',
+        BracketLeft: '[', BracketRight: ']', Quote: "'", Backquote: '`',
+        Minus: '-', Equal: '=',
+        ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
+        Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown', Insert: 'Insert',
+        NumpadEnter: 'Return'
+      };
+      if (map[c]) return map[c];
+      if (/^Numpad\d$/.test(c)) return 'num' + c.slice(6);
+      return null;
+    }
+
+    el('hotkeyBtn').addEventListener('click', beginCapture);
+    el('hotkeyClear').addEventListener('click', async () => {
+      current = await window.api.saveConfig({ hotkey: '' });
+      el('hotkeyBtn').textContent = formatAccelerator('');
+      setMsg('hotkey cleared', 'ok');
+      setTimeout(() => setMsg(''), 1500);
+    });
+
+    window.addEventListener('keydown', async (e) => {
+      if (!capturing) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        endCapture();
+        el('hotkeyBtn').textContent = formatAccelerator(current.hotkey);
+        setMsg('cancelled', '');
+        setTimeout(() => setMsg(''), 1200);
+        return;
+      }
+      const key = mapKey(e);
+      if (!key) return;
+      const mods = [];
+      if (e.metaKey) mods.push('CommandOrControl');
+      if (e.ctrlKey && !e.metaKey) mods.push('Control');
+      if (e.altKey) mods.push('Alt');
+      if (e.shiftKey) mods.push('Shift');
+      const isFunctionKey = /^F\d+$/.test(key);
+      const isLetterOrDigit = /^[A-Z0-9]$/.test(key);
+      const onlyShift = mods.length === 1 && mods[0] === 'Shift';
+      if (mods.length === 0 && !isFunctionKey) {
+        setMsg('needs a modifier (⌘ ⌃ ⌥) or function key', 'err');
+        el('hotkeyBtn').classList.add('error');
+        return;
+      }
+      if (onlyShift && isLetterOrDigit) {
+        setMsg('Shift + letter/digit conflicts with normal typing. Add ⌘, ⌃, or ⌥.', 'err');
+        el('hotkeyBtn').classList.add('error');
+        return;
+      }
+      const accelerator = [...mods, key].join('+');
+      const result = await window.api.testHotkey(accelerator);
+      if (!result.ok) {
+        el('hotkeyBtn').classList.add('error');
+        el('hotkeyBtn').textContent = formatAccelerator(accelerator);
+        setMsg(result.reason, 'err');
+        return;
+      }
+      current = await window.api.saveConfig({ hotkey: accelerator });
+      el('hotkeyBtn').classList.remove('error');
+      el('hotkeyBtn').textContent = formatAccelerator(accelerator);
+      setMsg('saved', 'ok');
+      endCapture();
+      setTimeout(() => setMsg(''), 1500);
+    });
+
+    /* ===== INIT ===== */
+    (async function init() {
+      await loadSettings();
+      const initialTab = (location.hash || '#notes').slice(1);
+      showTab(initialTab);
+    })();
+  </script>
+</body>
+</html>
