@@ -217,6 +217,14 @@ function drawFrame() {
   rafId = requestAnimationFrame(drawFrame);
 }
 
+function shortErrorLabel(error) {
+  const msg = `${error?.message || error || ''}`.toLowerCase();
+  if (msg.includes('invalid api key') || msg.includes('invalid_api_key') || msg.includes('401')) return 'bad key';
+  if (msg.includes('transcribe')) return 'api err';
+  if (msg.includes('failed to fetch') || msg.includes('network')) return 'net err';
+  return 'err';
+}
+
 async function onRecordingStopped() {
   try {
     const blob = new Blob(chunks, { type: 'audio/webm' });
@@ -260,7 +268,7 @@ async function onRecordingStopped() {
     setTimeout(() => setState('idle', 'idle'), 1200);
   } catch (e) {
     console.error('Processing error:', e);
-    setState('error', 'err');
+    setState('error', shortErrorLabel(e));
     setTimeout(() => setState('idle', 'idle'), 2000);
   }
 }
