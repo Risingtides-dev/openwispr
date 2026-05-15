@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, screen, Tray, Menu, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, screen, Tray, Menu, nativeImage, shell, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -64,7 +64,7 @@ Output only the cleaned text, no tags.`,
   widgetPosition: null
 };
 
-function loadConfig() {
+function loadConfigRaw() {
   try {
     if (fs.existsSync(CONFIG_PATH)) {
       const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
@@ -76,12 +76,45 @@ function loadConfig() {
   return { ...DEFAULT_CONFIG };
 }
 
-function saveConfig(cfg) {
-  fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+// Resolves an on-disk config into the in-memory shape: plaintext `groqApiKey`,
+// no `groqApiKeyEnc`. Safe to call only after app is ready.
+function resolveApiKey(cfg) {
+  if (cfg.groqApiKeyEnc) {
+    if (safeStorage.isEncryptionAvailable()) {
+      try {
+        cfg.groqApiKey = safeStorage.decryptString(Buffer.from(cfg.groqApiKeyEnc, 'base64'));
+      } catch (e) {
+        console.error('Failed to decrypt API key, clearing:', e);
+        cfg.groqApiKey = '';
+      }
+    } else {
+      console.warn('safeStorage unavailable; cannot decrypt stored API key.');
+      cfg.groqApiKey = '';
+    }
+    delete cfg.groqApiKeyEnc;
+  }
+  return cfg;
 }
 
-let config = loadConfig();
+function saveConfig(cfg) {
+  const toWrite = { ...cfg };
+  if (toWrite.groqApiKey && safeStorage.isEncryptionAvailable()) {
+    try {
+      toWrite.groqApiKeyEnc = safeStorage.encryptString(toWrite.groqApiKey).toString('base64');
+      delete toWrite.groqApiKey;
+    } catch (e) {
+      console.error('Failed to encrypt API key, writing plaintext:', e);
+    }
+  } else if (toWrite.groqApiKey && !safeStorage.isEncryptionAvailable()) {
+    console.warn('safeStorage unavailable; API key will be written in plaintext.');
+  } else if (!toWrite.groqApiKey) {
+    delete toWrite.groqApiKey;
+  }
+  fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(toWrite, null, 2));
+}
+
+let config = loadConfigRaw();
 let widgetWin = null;
 let settingsWin = null;
 let tray = null;
@@ -125,8 +158,24 @@ function createWidget() {
   widgetWin.on('move', () => {
     const [x, y] = widgetWin.getPosition();
     config.widgetPosition = { x, y };
-    saveConfig(config);
+    scheduleConfigSave();
   });
+}
+
+let configSaveTimer = null;
+const CONFIG_SAVE_DEBOUNCE_MS = 300;
+function scheduleConfigSave() {
+  if (configSaveTimer) clearTimeout(configSaveTimer);
+  configSaveTimer = setTimeout(() => {
+    configSaveTimer = null;
+    saveConfig(config);
+  }, CONFIG_SAVE_DEBOUNCE_MS);
+}
+function flushConfigSave() {
+  if (!configSaveTimer) return;
+  clearTimeout(configSaveTimer);
+  configSaveTimer = null;
+  saveConfig(config);
 }
 
 function createSettings(tab = 'notes') {
@@ -351,6 +400,11 @@ ipcMain.handle('transcripts-clear', () => {
 });
 
 app.whenReady().then(() => {
+  resolveApiKey(config);
+  // Migrate plaintext keys to encrypted form on first ready after upgrade.
+  if (config.groqApiKey && safeStorage.isEncryptionAvailable()) {
+    saveConfig(config);
+  }
   if (process.platform === 'darwin' && app.dock) {
     const iconPath = path.join(__dirname, 'build', 'icon.png');
     if (fs.existsSync(iconPath)) {
@@ -372,6 +426,7 @@ app.on('activate', () => {
 });
 
 app.on('will-quit', () => {
+  flushConfigSave();
   globalShortcut.unregisterAll();
 });
 
