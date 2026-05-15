@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('api', {
   saveConfig: (cfg) => ipcRenderer.invoke('save-config', cfg),
   pasteText: (text) => ipcRenderer.invoke('paste-text', text),
   copyText: (text) => ipcRenderer.invoke('copy-text', text),
+  getMicrophonePermission: () => ipcRenderer.invoke('get-microphone-permission'),
+  requestMicrophonePermission: () => ipcRenderer.invoke('request-microphone-permission'),
   testHotkey: (acc) => ipcRenderer.invoke('test-hotkey', acc),
   beginHotkeyCapture: () => ipcRenderer.send('begin-hotkey-capture'),
   endHotkeyCapture: () => ipcRenderer.send('end-hotkey-capture'),

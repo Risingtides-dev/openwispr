@@ -382,6 +382,13 @@
       <div id="hotkeyMsg" class="hotkey-msg"></div>
       <div class="help">Click, then press your combo. Reserved macOS shortcuts are blocked.</div>
 
+      <label>Microphone permission</label>
+      <div class="hotkey-row">
+        <button id="micPermissionBtn" class="hotkey-btn" type="button">ask for access</button>
+        <span class="status" id="micPermissionStatus"></span>
+      </div>
+      <div class="help" id="micPermissionHelp">Grant macOS microphone access before recording. If denied, reset it in System Settings.</div>
+
       <div class="row">
         <div>
           <label>Transcription</label>
@@ -745,6 +752,27 @@
       el('cleanupHelp').textContent = MODEL_DETAILS[el('cleanupModel').value] || '';
     }
 
+    function describeMicPermission(status) {
+      const labels = {
+        granted: 'granted',
+        denied: 'denied',
+        restricted: 'restricted',
+        'not-determined': 'not asked'
+      };
+      return labels[status] || status || 'unknown';
+    }
+
+    async function refreshMicPermission() {
+      if (!window.api.getMicrophonePermission) return;
+      const result = await window.api.getMicrophonePermission();
+      const status = result?.status || 'unknown';
+      el('micPermissionStatus').textContent = describeMicPermission(status);
+      el('micPermissionHelp').textContent = status === 'denied'
+        ? 'Denied by macOS. Open System Settings > Privacy & Security > Microphone, or reset permission from Terminal.'
+        : 'Grant macOS microphone access before recording.';
+      el('micPermissionBtn').disabled = status === 'granted' || status === 'restricted';
+    }
+
     async function loadSettings() {
       current = await window.api.getConfig();
       el('apiKey').value = current.groqApiKey || '';
@@ -756,6 +784,7 @@
       el('vocabulary').value = current.vocabulary || '';
       el('cleanupPrompt').value = current.cleanupPrompt || '';
       updateHelps();
+      refreshMicPermission();
     }
 
     el('transcribeModel').addEventListener('change', updateHelps);
@@ -779,6 +808,15 @@
     el('groqLink').addEventListener('click', (e) => {
       e.preventDefault();
       window.api.openExternal('https://console.groq.com/keys');
+    });
+
+    el('micPermissionBtn').addEventListener('click', async () => {
+      el('micPermissionStatus').textContent = 'asking...';
+      try {
+        await window.api.requestMicrophonePermission();
+      } finally {
+        await refreshMicPermission();
+      }
     });
 
     function setMsg(text, kind) {
