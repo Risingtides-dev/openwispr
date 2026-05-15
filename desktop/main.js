@@ -273,6 +273,14 @@ async function requestMicrophonePermission() {
 }
 
 function configurePermissionHandlers() {
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission, _origin, details) => {
+    if (permission === 'media') {
+      const mediaType = details?.mediaType;
+      return !mediaType || mediaType === 'audio';
+    }
+    return false;
+  });
+
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback, details) => {
     if (permission === 'media') {
       const mediaTypes = details?.mediaTypes || [];

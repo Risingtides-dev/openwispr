@@ -770,7 +770,20 @@
       el('micPermissionHelp').textContent = status === 'denied'
         ? 'Denied by macOS. Open System Settings > Privacy & Security > Microphone, or reset permission from Terminal.'
         : 'Grant macOS microphone access before recording.';
-      el('micPermissionBtn').disabled = status === 'granted' || status === 'restricted';
+      el('micPermissionBtn').disabled = status === 'restricted';
+    }
+
+    async function testMicrophoneAccess() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('getUserMedia is unavailable in this window');
+      }
+      const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+      const inputs = devices.filter((d) => d.kind === 'audioinput');
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+      stream.getTracks().forEach((track) => track.stop());
+      return inputs.length;
     }
 
     async function loadSettings() {
@@ -811,11 +824,19 @@
     });
 
     el('micPermissionBtn').addEventListener('click', async () => {
-      el('micPermissionStatus').textContent = 'asking...';
+      el('micPermissionStatus').textContent = 'testing...';
       try {
         await window.api.requestMicrophonePermission();
+        const inputCount = await testMicrophoneAccess();
+        el('micPermissionStatus').textContent = 'granted';
+        el('micPermissionHelp').textContent = inputCount > 0
+          ? `Mic works. Audio inputs found: ${inputCount}.`
+          : 'Mic permission works, but no audio inputs were listed.';
+      } catch (e) {
+        el('micPermissionStatus').textContent = 'failed';
+        el('micPermissionHelp').textContent = `${e.name || 'Error'}: ${e.message || e}`;
       } finally {
-        await refreshMicPermission();
+        setTimeout(refreshMicPermission, 300);
       }
     });
 
