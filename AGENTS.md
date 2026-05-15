@@ -7,6 +7,7 @@ This file is loaded into every Claude session that works under `~/openwispr/`. I
 openwispr is a personal voice-to-text tool (a WisprFlow-style hotkey dictation app). `~/openwispr/` is the workspace root. Sub-projects live one level down:
 
 - `~/openwispr/desktop/` — the live Electron app. Production binary at `/Applications/openwispr.app`.
+- `~/openwispr/ios/` — iOS SwiftUI container app + custom keyboard extension. Scaffolded for XcodeGen; no checked-in `.xcodeproj`.
 - (future) `~/openwispr/pwa/`, `~/openwispr/shared/`, etc.
 
 Persistent state — config, notes, transcripts — lives at `~/Library/Application Support/openwispr/`. Bundle ID: `dev.smathdaddy.openwispr`.
@@ -386,6 +387,21 @@ Two options:
 
 **Never load the PWA with `file://`** if you want service workers to behave per spec.
 
+## iOS sub-project (`ios/`)
+
+A SwiftUI container app plus a custom keyboard extension. The keyboard records audio with `AVAudioRecorder`, POSTs it to Groq's Whisper endpoint (same shape as `desktop/recorder.js`), runs the optional cleanup pass, then calls `textDocumentProxy.insertText` and writes the result to `UIPasteboard.general`. There is no programmatic paste API on iOS; `insertText` *is* the auto-paste.
+
+Quirks worth knowing before you touch this:
+
+- **No `.xcodeproj` is committed.** Generate it with `cd ios && xcodegen generate` (`brew install xcodegen`). All target wiring (bundle IDs, App Group, entitlements paths, deployment target) lives in `ios/project.yml`. Edit there, not in Xcode.
+- **Two targets, one App Group.** Container app `dev.smathdaddy.openwispr.ios` writes the Groq API key into `UserDefaults(suiteName: "group.dev.smathdaddy.openwispr")`; keyboard extension `dev.smathdaddy.openwispr.ios.keyboard` reads from the same suite. Both entitlements files reference the App Group ID — if you change it, change it in all three places (`Shared/SharedConfig.swift`, both `.entitlements`).
+- **`Shared/` is multi-target.** `project.yml` lists `Shared` under both targets' `sources`. New shared code goes there. Per-target code goes under `OpenwisprIOS/` or `OpenwisprKeyboard/`.
+- **`RequestsOpenAccess = YES` is mandatory.** Keyboards are sandboxed with no network by default. Open Access (a user toggle in iOS Settings) unlocks `URLSession` to `api.groq.com` and `UserDefaults` for the App Group. Without it the keyboard works visually but every Groq call fails and `SharedConfig.groqApiKey` returns nil.
+- **Mic prompt happens inside the keyboard.** `NSMicrophoneUsageDescription` lives in `OpenwisprKeyboard/Info.plist`, not the container's. First record attempt triggers the prompt.
+- **Memory budget is ~60 MB.** Don't load images, ML models, or large dependencies into the keyboard target. AAC at 16 kHz mono keeps recordings small; we clean up temp files after each transcription.
+- **Simulator is unreliable for this.** Custom keyboards and microphone recording both behave inconsistently in the iOS Simulator. Test on a real device.
+- **Prompt + model defaults are duplicated from `desktop/main.js`.** `SharedConfig.swift` carries its own copy of the cleanup system prompt and the `whisper-large-v3-turbo` / `openai/gpt-oss-20b` model IDs. If you change either in the desktop app, mirror the change here — or do the AGENTS.md step-4 extraction into `~/openwispr/shared/` and import from both.
+
 ## Quick command reference
 
 | Task | Command |
@@ -393,6 +409,7 @@ Two options:
 | Dev run desktop app | `cd ~/openwispr/desktop && npm start` |
 | Build packaged `.app` | `cd ~/openwispr/desktop && npm run dist` |
 | Regenerate icon | `cd ~/openwispr/desktop && npm run icon` |
+| Generate iOS Xcode project | `cd ~/openwispr/ios && xcodegen generate` |
 | Reset mic permission for dev | `tccutil reset Microphone dev.smathdaddy.openwispr` |
 | Reset paste-permission for dev | `tccutil reset Accessibility dev.smathdaddy.openwispr` |
 | Run packaged app with logs visible | `/Applications/openwispr.app/Contents/MacOS/openwispr 2>&1 \| tee /tmp/openwispr.log` |
