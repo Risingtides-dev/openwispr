@@ -18,7 +18,8 @@ final class AudioRecorder: NSObject, ObservableObject {
         }
 
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers])
+        try session.setCategory(.record, mode: .default, options: [.allowBluetooth])
+        try? session.setPreferredSampleRate(48_000)
         try session.setActive(true, options: .notifyOthersOnDeactivation)
 
         let url = FileManager.default.temporaryDirectory
@@ -27,6 +28,14 @@ final class AudioRecorder: NSObject, ObservableObject {
         let newEngine = AVAudioEngine()
         let input = newEngine.inputNode
         let inputFormat = input.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0 else {
+            try? session.setActive(false)
+            throw NSError(
+                domain: "openwispr.recorder",
+                code: -20,
+                userInfo: [NSLocalizedDescriptionKey: "Input format has 0 sample rate (no live input). Force-quit any app holding the mic and retry."]
+            )
+        }
 
         let newFile = try AVAudioFile(forWriting: url, settings: inputFormat.settings)
 
@@ -50,7 +59,18 @@ final class AudioRecorder: NSObject, ObservableObject {
         }
 
         newEngine.prepare()
-        try newEngine.start()
+        do {
+            try newEngine.start()
+        } catch {
+            input.removeTap(onBus: 0)
+            try? session.setActive(false)
+            let route = session.currentRoute.inputs.map { $0.portType.rawValue }.joined(separator: ",")
+            throw NSError(
+                domain: "openwispr.recorder",
+                code: -21,
+                userInfo: [NSLocalizedDescriptionKey: "engine.start failed (\(error.localizedDescription)). rate=\(Int(inputFormat.sampleRate)) ch=\(inputFormat.channelCount) inputs=\(route.isEmpty ? "none" : route)"]
+            )
+        }
 
         self.engine = newEngine
         self.file = newFile
