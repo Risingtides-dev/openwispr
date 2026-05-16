@@ -178,6 +178,53 @@ To upgrade to a real signed build:
    ```
    Add `"notarize": true` under `build.mac` in `package.json`. Notarization round-trips the build through Apple's notary service (~3–5 min for a small app).
 
+### Apple Developer Program: post-enrollment checklist
+
+One $99/year membership at developer.apple.com unlocks both macOS Developer ID signing and iOS distribution (incl. the keyboard extension). After enrolling, work through this in order.
+
+**1. Identifiers (developer.apple.com → Certificates, Identifiers & Profiles → Identifiers)**
+
+| Type | Bundle ID | Used by |
+|---|---|---|
+| App ID (macOS) | `dev.smathdaddy.openwispr` | desktop app (already in `package.json`) |
+| App ID (iOS) | `dev.smathdaddy.openwispr.ios` | iOS containing app |
+| App ID (iOS) | `dev.smathdaddy.openwispr.ios.keyboard` | keyboard extension |
+| App Group | `group.dev.smathdaddy.openwispr` | shared storage between container + keyboard |
+
+Enable the **App Groups** capability on both iOS App IDs and add the group above.
+
+**2. macOS: Developer ID Application cert (for openwispr.app)**
+
+1. Portal → Certificates → `+` → **Developer ID Application** → follow the CSR flow from Keychain Access on this Mac.
+2. Download the `.cer`, double-click to install into the login keychain.
+3. Right-click in Keychain Access → Export as `.p12` with a password.
+4. Build with env vars set (per the section above): `CSC_LINK`, `CSC_KEY_PASSWORD`, plus `APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID` if notarizing.
+5. Once signed, the binary signature is stable across rebuilds — **TCC grants (mic / accessibility / automation) survive `npm run dist`** and the in-app permission UI is only needed once.
+
+**3. iOS: signing + provisioning (handled by Xcode)**
+
+1. Xcode → Settings → Accounts → add Apple ID.
+2. For each iOS target (container app + keyboard extension): Signing & Capabilities → **Automatically manage signing** → pick Team.
+3. Add capabilities:
+   - **App Groups** → tick `group.dev.smathdaddy.openwispr` on both targets.
+   - Container only: **Microphone usage** (`NSMicrophoneUsageDescription` in `Info.plist`).
+4. Keyboard extension `Info.plist`:
+   - `NSExtension` → `NSExtensionAttributes` → `RequestsOpenAccess: YES` — required for network calls (Groq API). Surfaces a warning prompt to the user.
+   - `NSExtensionPointIdentifier`: `com.apple.keyboard-service`.
+
+**4. Distribution paths**
+
+- **TestFlight** — invite yourself + up to 100 internal testers (no review) or up to 10,000 external (light review). The realistic way to actually *use* a keyboard you've built — Xcode-installed builds expire in 7 days on a free account; with a paid account, internal TestFlight builds last 90 days per upload.
+- **App Store** — full review. Keyboards get extra scrutiny because `RequestsOpenAccess` plus mic access reads as "captures everything you type and say."
+
+**5. iOS keyboard gotchas you will hit**
+
+- **Memory cap ~48 MB** on older devices, more on newer. Don't bundle a local Whisper model — keep transcription server-side via the Groq API.
+- **Keyboards can't request microphone permission themselves.** The *containing app* must already hold the grant; the keyboard inherits via the App Group. Container onboarding must walk the user through granting mic in the host app first.
+- **"Allow Full Access"** must be enabled in Settings → General → Keyboard → Keyboards → openwispr. Without it, no network and no audio. Plan onboarding copy around the system's scary warning.
+- **Sharing the Groq API key**: write it to `UserDefaults(suiteName: "group.dev.smathdaddy.openwispr")` from the container, read it from the same suite in the keyboard.
+- **Keyboards can't open arbitrary URLs.** Use `UIApplication.shared.open` from the *containing app* for any "open settings" flows; the keyboard can only `responderChain` its way to it.
+
 ### Automated build pipeline
 
 Current flow is manual. To automate via GitHub Actions, create `.github/workflows/build.yml`:
