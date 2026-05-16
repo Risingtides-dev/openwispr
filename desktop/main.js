@@ -272,6 +272,37 @@ async function requestMicrophonePermission() {
   return { status, granted, canAsk: status === 'not-determined' };
 }
 
+function checkAccessibilityPermission(prompt) {
+  if (process.platform !== 'darwin') return { trusted: true, supported: false };
+  const trusted = systemPreferences.isTrustedAccessibilityClient(!!prompt);
+  return { trusted, supported: true };
+}
+
+function testAutomationPermission() {
+  if (process.platform !== 'darwin') return Promise.resolve({ ok: true, supported: false });
+  return new Promise((resolve) => {
+    execFile('osascript', ['-e', 'tell application "System Events" to return name of first process'], (err, _stdout, stderr) => {
+      if (!err) return resolve({ ok: true, supported: true });
+      const msg = (stderr || err.message || '').trim();
+      let reason = 'unknown';
+      if (/-1743|not authorized|user has declined/i.test(msg)) reason = 'automation-denied';
+      else if (/1002|not allowed to send keystrokes/i.test(msg)) reason = 'accessibility-denied';
+      resolve({ ok: false, supported: true, reason, error: msg });
+    });
+  });
+}
+
+const PRIVACY_PANES = {
+  microphone: 'Privacy_Microphone',
+  accessibility: 'Privacy_Accessibility',
+  automation: 'Privacy_Automation'
+};
+function openPrivacyPane(pane) {
+  const key = PRIVACY_PANES[pane];
+  if (!key) return;
+  shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${key}`);
+}
+
 function configurePermissionHandlers() {
   session.defaultSession.setPermissionCheckHandler((_webContents, permission, _origin, details) => {
     if (permission === 'media') {
@@ -319,6 +350,9 @@ ipcMain.handle('copy-text', (_e, text) => {
 });
 ipcMain.handle('get-microphone-permission', () => getMicrophonePermission());
 ipcMain.handle('request-microphone-permission', () => requestMicrophonePermission());
+ipcMain.handle('check-accessibility-permission', (_e, prompt) => checkAccessibilityPermission(prompt));
+ipcMain.handle('test-automation-permission', () => testAutomationPermission());
+ipcMain.on('open-privacy-pane', (_e, pane) => openPrivacyPane(pane));
 ipcMain.on('open-settings', (_e, tab) => createSettings(tab || 'settings'));
 ipcMain.on('open-external', (_e, url) => shell.openExternal(url));
 ipcMain.on('show-widget-menu', () => buildAppMenu().popup());
