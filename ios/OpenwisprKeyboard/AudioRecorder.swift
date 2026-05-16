@@ -1,8 +1,10 @@
 import AVFoundation
 
 final class AudioRecorder: NSObject, ObservableObject {
+    @Published var level: Double = 0
     private var recorder: AVAudioRecorder?
     private var fileURL: URL?
+    private var meterTimer: Timer?
 
     func start() throws {
         let perm = AVAudioApplication.shared.recordPermission
@@ -30,6 +32,7 @@ final class AudioRecorder: NSObject, ObservableObject {
         ]
 
         let rec = try AVAudioRecorder(url: url, settings: settings)
+        rec.isMeteringEnabled = true
         guard rec.prepareToRecord() else {
             throw NSError(
                 domain: "openwispr.recorder",
@@ -47,6 +50,7 @@ final class AudioRecorder: NSObject, ObservableObject {
         }
         recorder = rec
         fileURL = url
+        startMetering()
     }
 
     func stop() throws -> URL {
@@ -57,10 +61,28 @@ final class AudioRecorder: NSObject, ObservableObject {
                 userInfo: [NSLocalizedDescriptionKey: "Not recording"]
             )
         }
+        stopMetering()
         recorder.stop()
         self.recorder = nil
         self.fileURL = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         return fileURL
+    }
+
+    private func startMetering() {
+        meterTimer?.invalidate()
+        meterTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            guard let self, let rec = self.recorder else { return }
+            rec.updateMeters()
+            let db = Double(rec.averagePower(forChannel: 0))
+            let normalized = max(0, min(1, (db + 50) / 50))
+            DispatchQueue.main.async { self.level = normalized }
+        }
+    }
+
+    private func stopMetering() {
+        meterTimer?.invalidate()
+        meterTimer = nil
+        DispatchQueue.main.async { self.level = 0 }
     }
 }
