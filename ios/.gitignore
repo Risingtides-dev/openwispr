@@ -1,0 +1,8 @@
+build/
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+*.xcuserstate
+.DS_Store
+OpenwisprKeyboard/Secrets.swift

@@ -7,6 +7,7 @@ This file is loaded into every Claude session that works under `~/openwispr/`. I
 openwispr is a personal voice-to-text tool (a WisprFlow-style hotkey dictation app). `~/openwispr/` is the workspace root. Sub-projects live one level down:
 
 - `~/openwispr/desktop/` — the live Electron app. Production binary at `/Applications/openwispr.app`.
+- `~/openwispr/ios/` — iOS SwiftUI container app + voice keyboard extension. Scaffolded for XcodeGen; no checked-in `.xcodeproj`. Dev build uses a free Personal Team and a gitignored `Secrets.swift` to hardcode the Groq API key (App Groups are paid-account-only). See [ios/README.md](ios/README.md).
 - (future) `~/openwispr/pwa/`, `~/openwispr/shared/`, etc.
 
 Persistent state — config, notes, transcripts — lives at `~/Library/Application Support/openwispr/`. Bundle ID: `dev.smathdaddy.openwispr`.
