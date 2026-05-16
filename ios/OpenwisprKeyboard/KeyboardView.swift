@@ -71,33 +71,15 @@ struct KeyboardView: View {
 
     private var micButton: some View {
         Button(action: micTapped) {
-            ZStack {
-                Circle()
-                    .fill(micColor)
-                    .frame(width: 88, height: 88)
-                    .shadow(radius: 2, y: 1)
-                Group {
-                    switch phase {
-                    case .idle: Image(systemName: "mic.fill")
-                    case .recording: Image(systemName: "stop.fill")
-                    case .transcribing: ProgressView().tint(.white)
-                    }
-                }
-                .font(.system(size: 32, weight: .semibold))
-                .foregroundColor(.white)
-            }
+            MicOrb(
+                isRecording: phase == .recording,
+                isTranscribing: phase == .transcribing,
+                level: recorder.level
+            )
         }
         .buttonStyle(.plain)
         .disabled(!hasFullAccess || phase == .transcribing)
         .opacity(hasFullAccess ? 1 : 0.4)
-    }
-
-    private var micColor: Color {
-        switch phase {
-        case .idle: return .accentColor
-        case .recording: return .red
-        case .transcribing: return .gray
-        }
     }
 
     private func sideButton(systemImage: String, action: @escaping () -> Void) -> some View {
@@ -182,5 +164,99 @@ struct KeyboardView: View {
     private func setError(_ text: String) {
         message = text
         phase = .idle
+    }
+}
+
+struct MicOrb: View {
+    let isRecording: Bool
+    let isTranscribing: Bool
+    let level: Double
+
+    @State private var rippleA = false
+    @State private var rippleB = false
+    @State private var rotation: Double = 0
+
+    private let segments = 22
+    private let baseSize: CGFloat = 88
+
+    var body: some View {
+        ZStack {
+            if isRecording {
+                ripple(scale: rippleA ? 1.7 : 1.0, opacity: rippleA ? 0 : 0.5)
+                    .animation(.easeOut(duration: 1.4).repeatForever(autoreverses: false), value: rippleA)
+                ripple(scale: rippleB ? 1.9 : 1.0, opacity: rippleB ? 0 : 0.35)
+                    .animation(.easeOut(duration: 1.4).repeatForever(autoreverses: false).delay(0.5), value: rippleB)
+            }
+
+            Circle()
+                .fill(orbColor)
+                .frame(width: baseSize, height: baseSize)
+                .blur(radius: isRecording ? CGFloat(10 + level * 18) : 6)
+                .opacity(isRecording ? 0.55 + level * 0.4 : 0.3)
+
+            if isRecording {
+                segmentRing
+            }
+
+            Circle()
+                .fill(LinearGradient(
+                    colors: [orbColor, orbColor.opacity(0.65)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ))
+                .frame(width: baseSize - 8, height: baseSize - 8)
+                .scaleEffect(isRecording ? 1.0 + CGFloat(level) * 0.08 : 1.0)
+                .shadow(color: orbColor.opacity(0.55), radius: 5, y: 1)
+                .animation(.easeOut(duration: 0.08), value: level)
+
+            icon
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundColor(.white)
+        }
+        .frame(width: 120, height: 120)
+        .onAppear {
+            rippleA = true
+            rippleB = true
+            withAnimation(.linear(duration: 8).repeatForever(autoreverses: false)) {
+                rotation = 360
+            }
+        }
+    }
+
+    @ViewBuilder private var icon: some View {
+        if isTranscribing {
+            ProgressView().tint(.white)
+        } else if isRecording {
+            Image(systemName: "stop.fill")
+        } else {
+            Image(systemName: "mic.fill")
+        }
+    }
+
+    private var orbColor: Color {
+        if isTranscribing { return Color(white: 0.55) }
+        if isRecording { return Color(red: 0.95, green: 0.32, blue: 0.32) }
+        return Color(red: 0.45, green: 0.55, blue: 0.95)
+    }
+
+    private func ripple(scale: CGFloat, opacity: Double) -> some View {
+        Circle()
+            .stroke(orbColor.opacity(opacity), lineWidth: 2)
+            .frame(width: baseSize, height: baseSize)
+            .scaleEffect(scale)
+    }
+
+    private var segmentRing: some View {
+        ZStack {
+            ForEach(0..<segments, id: \.self) { i in
+                let angle = Double(i) / Double(segments) * 360.0
+                Capsule()
+                    .fill(orbColor.opacity(0.65 + level * 0.35))
+                    .frame(width: 2, height: 5 + CGFloat(level) * 12)
+                    .offset(y: -(baseSize / 2 + 6))
+                    .rotationEffect(.degrees(angle + rotation))
+            }
+        }
+        .animation(.easeOut(duration: 0.08), value: level)
     }
 }
