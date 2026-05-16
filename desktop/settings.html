@@ -382,12 +382,29 @@
       <div id="hotkeyMsg" class="hotkey-msg"></div>
       <div class="help">Click, then press your combo. Reserved macOS shortcuts are blocked.</div>
 
-      <label>Microphone permission</label>
+      <label>Microphone</label>
       <div class="hotkey-row">
         <button id="micPermissionBtn" class="hotkey-btn" type="button">ask for access</button>
+        <button id="micOpenSettingsBtn" class="hotkey-clear" type="button" title="Open System Settings">open settings</button>
         <span class="status" id="micPermissionStatus"></span>
       </div>
-      <div class="help" id="micPermissionHelp">Grant macOS microphone access before recording. If denied, reset it in System Settings.</div>
+      <div class="help" id="micPermissionHelp">Required to record audio.</div>
+
+      <label>Accessibility</label>
+      <div class="hotkey-row">
+        <button id="a11yPermissionBtn" class="hotkey-btn" type="button">ask for access</button>
+        <button id="a11yOpenSettingsBtn" class="hotkey-clear" type="button" title="Open System Settings">open settings</button>
+        <span class="status" id="a11yPermissionStatus"></span>
+      </div>
+      <div class="help" id="a11yPermissionHelp">Required to auto-paste at your cursor (sends Cmd+V).</div>
+
+      <label>Automation</label>
+      <div class="hotkey-row">
+        <button id="automationBtn" class="hotkey-btn" type="button">test access</button>
+        <button id="automationOpenSettingsBtn" class="hotkey-clear" type="button" title="Open System Settings">open settings</button>
+        <span class="status" id="automationStatus"></span>
+      </div>
+      <div class="help" id="automationHelp">Required to auto-paste at your cursor (controls System Events).</div>
 
       <div class="row">
         <div>
@@ -786,6 +803,34 @@
       return inputs.length;
     }
 
+    async function refreshAccessibilityPermission() {
+      if (!window.api.checkAccessibilityPermission) return;
+      const result = await window.api.checkAccessibilityPermission(false);
+      const trusted = !!result?.trusted;
+      el('a11yPermissionStatus').textContent = trusted ? 'granted' : 'not granted';
+      el('a11yPermissionHelp').textContent = trusted
+        ? 'Granted. Auto-paste should work.'
+        : 'Click "ask for access" to trigger the macOS prompt, or open Settings to toggle it manually.';
+    }
+
+    async function refreshAutomationPermission() {
+      if (!window.api.testAutomationPermission) return;
+      const result = await window.api.testAutomationPermission();
+      if (result?.ok) {
+        el('automationStatus').textContent = 'granted';
+        el('automationHelp').textContent = 'Granted. Auto-paste should work.';
+      } else if (result?.reason === 'automation-denied') {
+        el('automationStatus').textContent = 'denied';
+        el('automationHelp').textContent = 'Denied. Open Settings > Privacy & Security > Automation, then enable System Events under openwispr.';
+      } else if (result?.reason === 'accessibility-denied') {
+        el('automationStatus').textContent = 'a11y blocked';
+        el('automationHelp').textContent = 'Blocked by Accessibility. Grant Accessibility above first.';
+      } else {
+        el('automationStatus').textContent = 'unknown';
+        el('automationHelp').textContent = result?.error || 'Click "test access" to verify.';
+      }
+    }
+
     async function loadSettings() {
       current = await window.api.getConfig();
       el('apiKey').value = current.groqApiKey || '';
@@ -798,6 +843,8 @@
       el('cleanupPrompt').value = current.cleanupPrompt || '';
       updateHelps();
       refreshMicPermission();
+      refreshAccessibilityPermission();
+      refreshAutomationPermission();
     }
 
     el('transcribeModel').addEventListener('change', updateHelps);
@@ -838,6 +885,32 @@
       } finally {
         setTimeout(refreshMicPermission, 300);
       }
+    });
+
+    el('micOpenSettingsBtn').addEventListener('click', () => {
+      window.api.openPrivacyPane?.('microphone');
+    });
+
+    el('a11yPermissionBtn').addEventListener('click', async () => {
+      el('a11yPermissionStatus').textContent = 'asking...';
+      try {
+        await window.api.checkAccessibilityPermission(true);
+      } finally {
+        setTimeout(refreshAccessibilityPermission, 300);
+      }
+    });
+
+    el('a11yOpenSettingsBtn').addEventListener('click', () => {
+      window.api.openPrivacyPane?.('accessibility');
+    });
+
+    el('automationBtn').addEventListener('click', async () => {
+      el('automationStatus').textContent = 'testing...';
+      await refreshAutomationPermission();
+    });
+
+    el('automationOpenSettingsBtn').addEventListener('click', () => {
+      window.api.openPrivacyPane?.('automation');
     });
 
     function setMsg(text, kind) {
