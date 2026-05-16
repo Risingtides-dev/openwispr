@@ -1,74 +1,78 @@
 # openwispr iOS
 
-A SwiftUI keyboard extension that records audio, transcribes it with Groq Whisper, and drops the result into the focused text field (and onto the clipboard).
+A SwiftUI voice keyboard built around a long-running container "Flow Session" that does the actual audio capture and Groq transcription, while the keyboard extension just signals start/stop and inserts the resulting text.
+
+## Why this architecture
+
+iOS deliberately blocks keyboard extensions from holding the audio input — the system logs `CMSUtility_IsAllowedToStartRecording ... was NOT allowed ... because it is an extension`. AVAudioRecorder, AVAudioEngine, AudioQueue all fail with OSStatus `'!rec'` (561145187) inside a keyboard. No entitlement flips that off.
+
+The workable path, used by WisprFlow and similar dictation keyboards, is:
+
+1. Keyboard → opens the container app once per "session" via a URL scheme.
+2. Container starts an audio session with the **audio** background mode, keeps an AVAudioEngine running for ~15 minutes.
+3. Keyboard signals utterance start/stop via **Darwin notifications** (cross-process kernel signals; carry no payload).
+4. Container writes recorded utterances to a WAV file, sends to Groq, drops the transcript into the **App Group** UserDefaults along with a counter.
+5. Keyboard observes a `transcriptReady` Darwin notification, reads the App Group, calls `textDocumentProxy.insertText` so the result appears in the focused field.
+
+End user experience: tap the orb the first time → opens openwispr app to start a session → swipe back → from then on, tap orb to dictate, text inserts automatically.
+
+## Requirements
+
+- Paid Apple Developer account (App Groups + Audio background mode are paid-account capabilities).
+- iOS 17+ on the target device.
+- A Groq API key — paste it into `Shared/Secrets.swift` (gitignored).
 
 ## Layout
 
-- `OpenwisprIOS/` — container app. Onboarding instructions only in this dev build.
-- `OpenwisprKeyboard/` — keyboard extension. Single mic button, `AVAudioRecorder`, multipart POST to Groq, `textDocumentProxy.insertText`, `UIPasteboard.general.string`.
-- `Shared/` — code compiled into both targets. Just `SharedConfig.swift` (model names, cleanup prompt) for now.
-
-## Dev flow: free Personal Team
-
-This setup deliberately avoids App Groups so it works with a **free Apple ID / Personal Team** — no paid Apple Developer Program enrollment needed.
-
-Trade-offs of the free path:
-- App Groups capability is paid-account only, so the container app and keyboard extension can't share storage. The Groq API key is hardcoded in the keyboard target at `OpenwisprKeyboard/Secrets.swift` (gitignored) instead of being entered into the container UI.
-- Builds installed via Xcode are valid for **7 days** — you re-run from Xcode every week to refresh the provisioning profile.
-- Limit of 3 App IDs total on a free Personal Team. The container + keyboard use 2 of those slots.
-
-When you upgrade to the paid program, swap back to App-Groups-based storage and the container's API key form.
+- `OpenwisprIOS/` — container app. Owns `FlowSession`, handles the `openwispr://` URL scheme, shows the session/permission UI.
+- `OpenwisprKeyboard/` — keyboard extension. Renders the mic orb, posts Darwin notifications, inserts text on transcript ready.
+- `Shared/` — files compiled into both targets:
+  - `FlowSessionState.swift` — App Group state schema + Darwin notification names + helpers.
+  - `GroqClient.swift` — Whisper + chat completions API calls (container uses this).
+  - `SharedConfig.swift` — model IDs + cleanup prompt.
+  - `Secrets.swift` — Groq API key (gitignored, copy from `.example`).
 
 ## Build
-
-There is no checked-in `.xcodeproj`. Generate it with [XcodeGen](https://github.com/yonaskolb/XcodeGen):
 
 ```
 brew install xcodegen
 cd ios
-cp OpenwisprKeyboard/Secrets.swift.example OpenwisprKeyboard/Secrets.swift
-# edit Secrets.swift, paste your gsk_... key
+cp Shared/Secrets.swift.example Shared/Secrets.swift
+# edit Shared/Secrets.swift, paste your gsk_... key
 xcodegen generate
 open openwispr.xcodeproj
 ```
 
-In Xcode:
+In Xcode, on each of the two targets (Signing & Capabilities tab):
 
-1. Select both targets and pick your **Team** under Signing & Capabilities (your Apple ID becomes "Your Name (Personal Team)").
-2. If the default bundle ID `dev.smathdaddy.openwispr.ios` is taken on your team, change `bundleIdPrefix` in `project.yml` and re-run `xcodegen generate`.
+1. Tick **Automatically manage signing**, pick your Team.
+2. Capabilities → confirm both **App Groups** has `group.dev.smathdaddy.openwispr` ticked. The entitlements files reference it; Xcode registers it with your team automatically.
+3. Container only — Capabilities → **Background Modes** → tick **Audio, AirPlay, and Picture in Picture**. Already wired in `OpenwisprIOS/Info.plist`.
 
-### Run on the iOS Simulator (no device needed)
-
-Pick an iOS 17+ simulator in the run-target dropdown and hit ⌘R. The keyboard works in the simulator: add it via the simulated Settings app, switch to it in any text field, tap the mic — the simulator captures audio from the host Mac's microphone.
-
-### Run on your iPhone
-
-Plug the phone in, select it in the run-target dropdown, hit ⌘R. The build is valid for 7 days; after that, re-run from Xcode.
+If the default bundle ID prefix `dev.smathdaddy.openwispr.ios` is taken on your team, change `bundleIdPrefix` in `project.yml` and re-run `xcodegen generate`.
 
 ## First-run on the device
 
-1. Open the openwispr app on the phone (just to register the keyboard with iOS).
-2. **Settings → General → Keyboard → Keyboards → Add New Keyboard** → openwispr.
-3. Tap **openwispr** in that list and toggle **Allow Full Access** on. Required for network access (Groq) and recording.
-4. In any app, long-press the globe key, pick openwispr, tap the mic. iOS will prompt for microphone permission once.
+1. Build & run the container app on your iPhone (paid signing). Grant microphone permission when prompted.
+2. **Settings → General → Keyboard → Keyboards → Add New Keyboard → openwispr.**
+3. Tap **openwispr** in that list, toggle **Allow Full Access** on.
+4. Switch back to your text field of choice. Long-press the globe key → openwispr.
 
-## Why "Allow Full Access"
+### Using the keyboard
 
-iOS keyboards default to a strict sandbox with no network. The keyboard needs `RequestsOpenAccess = YES` (set in `OpenwisprKeyboard/Info.plist`) and the user-granted Full Access toggle to reach `api.groq.com`.
+- Tap the orb. If no session is active, openwispr opens, starts a 15-minute session, returns to you (swipe right on the home indicator).
+- Once the session is live, the orb glows blue. Tap to start an utterance; the orb turns red and grows ripples. Tap again to stop. The orb shows a spinner while Groq transcribes (1-2 seconds), then the text inserts into the focused field automatically.
+- Session ends after 15 minutes (or sooner if you stop it manually from the openwispr app).
 
-## Why `insertText` *and* clipboard
+## Memory + battery
 
-`textDocumentProxy.insertText(text)` writes directly into the focused field — this is the actual auto-paste. The clipboard write is a redundancy: if the user is in a context where `insertText` is no-op (rare; some secure fields), they can long-press → Paste.
-
-iOS does **not** expose any API for a keyboard extension to fire a paste action itself. There is no equivalent to the desktop app's `osascript Cmd+V`.
-
-## Memory budget
-
-Keyboard extensions are killed by the OS around ~60 MB resident. Recording at 16 kHz mono AAC keeps the buffer small; the transcribed string is tiny. Avoid loading large models or images into the keyboard target.
+- Container keeps AVAudioEngine running for the session duration, but only writes audio between utterance start/stop, so memory stays small.
+- iOS shows the red recording indicator (top of status bar) while a session is active. Expected; this is the privacy contract.
+- 15 minutes is a soft default in `FlowSession.sessionDuration` — adjust if you want longer sessions.
 
 ## Mirroring the desktop pipeline
 
-`OpenwisprKeyboard/GroqClient.swift` is a direct port of `desktop/recorder.js`:
+`Shared/GroqClient.swift` matches `desktop/recorder.js`:
 
-- `transcribe` → `POST /audio/transcriptions` (multipart, `response_format=text`, `temperature=0`).
-- `cleanup` → `POST /chat/completions` with the same system prompt as `desktop/main.js` `DEFAULT_CONFIG.cleanupPrompt`, wrapping the transcript in `<transcript>...</transcript>`.
+- `transcribe` → `POST /audio/transcriptions` (multipart, WAV body, `response_format=text`, `temperature=0`).
+- `cleanup` → `POST /chat/completions` using `SharedConfig.cleanupPrompt`, the same prompt as `desktop/main.js`'s `DEFAULT_CONFIG.cleanupPrompt`.

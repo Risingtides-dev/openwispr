@@ -4,12 +4,17 @@ struct KeyboardView: View {
     let insertAndCopy: (String) -> Void
     let deleteBackward: () -> Void
     let advanceToNextKeyboard: () -> Void
+    let openContainer: (URL) -> Void
     let hasFullAccess: Bool
     let needsInputModeSwitchKey: Bool
 
-    @StateObject private var recorder = AudioRecorder()
     @State private var phase: Phase = .idle
     @State private var message: String?
+    @State private var sessionActive: Bool = false
+    @State private var sessionExpiresAt: Date?
+    @State private var now: Date = Date()
+
+    private let pollTimer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
 
     enum Phase { case idle, recording, transcribing }
 
@@ -35,6 +40,11 @@ struct KeyboardView: View {
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
         .frame(height: 260)
+        .onAppear(perform: refreshFromState)
+        .onReceive(pollTimer) { _ in
+            now = Date()
+            refreshFromState()
+        }
     }
 
     @ViewBuilder private var statusLine: some View {
@@ -44,19 +54,28 @@ struct KeyboardView: View {
                 .foregroundStyle(.red)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 16)
-        } else {
-            Text(phaseLabel)
+        } else if !sessionActive {
+            Text("Tap to start a Flow session")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+        } else {
+            HStack(spacing: 6) {
+                Circle().fill(.red).frame(width: 6, height: 6).opacity(sessionActive ? 1 : 0.3)
+                Text(sessionStatusText).font(.footnote).foregroundStyle(.secondary)
+            }
         }
     }
 
-    private var phaseLabel: String {
+    private var sessionStatusText: String {
+        let head: String
         switch phase {
-        case .idle: return "Tap to record"
-        case .recording: return "Recording — tap to stop"
-        case .transcribing: return "Transcribing..."
+        case .idle: head = "Live · tap to dictate"
+        case .recording: head = "Listening · tap to stop"
+        case .transcribing: head = "Transcribing…"
         }
+        guard let exp = sessionExpiresAt else { return head }
+        let secs = max(0, Int(exp.timeIntervalSince(now)))
+        return "\(head) · \(secs / 60):\(String(format: "%02d", secs % 60))"
     }
 
     @ViewBuilder private var helpLine: some View {
@@ -70,11 +89,11 @@ struct KeyboardView: View {
     }
 
     private var micButton: some View {
-        Button(action: micTapped) {
+        Button(action: orbTapped) {
             MicOrb(
                 isRecording: phase == .recording,
                 isTranscribing: phase == .transcribing,
-                level: recorder.level
+                isSessionActive: sessionActive
             )
         }
         .buttonStyle(.plain)
@@ -92,77 +111,51 @@ struct KeyboardView: View {
         .buttonStyle(.plain)
     }
 
-    private func micTapped() {
+    private func orbTapped() {
         message = nil
+        if !FlowSessionState.isSessionActiveAndUnexpired {
+            if let url = URL(string: "openwispr://startSession") {
+                openContainer(url)
+            }
+            return
+        }
         switch phase {
         case .idle:
-            do {
-                try recorder.start()
-                phase = .recording
-            } catch {
-                message = "Mic error: \(error.localizedDescription)"
-            }
+            DarwinNotify.post(FlowSessionState.DarwinNotification.startUtterance)
+            phase = .recording
         case .recording:
-            let url: URL
-            do {
-                url = try recorder.stop()
-            } catch {
-                message = "Stop error: \(error.localizedDescription)"
-                phase = .idle
-                return
-            }
+            DarwinNotify.post(FlowSessionState.DarwinNotification.stopUtterance)
             phase = .transcribing
-            Task { await transcribe(fileURL: url) }
         case .transcribing:
             break
         }
     }
 
-    private func transcribe(fileURL: URL) async {
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-
-        let apiKey = Secrets.groqApiKey
-        guard !apiKey.isEmpty, apiKey != "gsk_REPLACE_ME" else {
-            await setError("Set Secrets.groqApiKey in OpenwisprKeyboard/Secrets.swift.")
+    func refreshFromState() {
+        let active = FlowSessionState.isSessionActiveAndUnexpired
+        sessionActive = active
+        sessionExpiresAt = FlowSessionState.sessionExpiresAt
+        if !active {
+            phase = .idle
             return
         }
-
-        do {
-            let raw = try await GroqClient.transcribe(
-                fileURL: fileURL,
-                apiKey: apiKey,
-                model: SharedConfig.transcribeModel,
-                vocabulary: SharedConfig.vocabulary
-            )
-            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else {
-                await setError("No speech detected.")
-                return
-            }
-            let final: String
-            if SharedConfig.cleanupEnabled {
-                final = (try? await GroqClient.cleanup(
-                    text: trimmed,
-                    apiKey: apiKey,
-                    model: SharedConfig.cleanupModel,
-                    systemPrompt: SharedConfig.cleanupPrompt,
-                    vocabulary: SharedConfig.vocabulary
-                )) ?? trimmed
-            } else {
-                final = trimmed
-            }
-            await MainActor.run {
-                insertAndCopy(final)
-                phase = .idle
-            }
-        } catch {
-            await setError(error.localizedDescription)
+        let utteranceInProgress = FlowSessionState.utteranceInProgress
+        switch phase {
+        case .idle:
+            if utteranceInProgress { phase = .recording }
+        case .recording:
+            if !utteranceInProgress { phase = .transcribing }
+        case .transcribing:
+            break
+        }
+        if let err = FlowSessionState.errorMessage {
+            message = err
+            phase = .idle
+            FlowSessionState.errorMessage = nil
         }
     }
 
-    @MainActor
-    private func setError(_ text: String) {
-        message = text
+    func transcriptDelivered() {
         phase = .idle
     }
 }
@@ -170,11 +163,12 @@ struct KeyboardView: View {
 struct MicOrb: View {
     let isRecording: Bool
     let isTranscribing: Bool
-    let level: Double
+    let isSessionActive: Bool
 
     @State private var rippleA = false
     @State private var rippleB = false
     @State private var rotation: Double = 0
+    @State private var breathe: Bool = false
 
     private let segments = 22
     private let baseSize: CGFloat = 88
@@ -191,8 +185,8 @@ struct MicOrb: View {
             Circle()
                 .fill(orbColor)
                 .frame(width: baseSize, height: baseSize)
-                .blur(radius: isRecording ? CGFloat(10 + level * 18) : 6)
-                .opacity(isRecording ? 0.55 + level * 0.4 : 0.3)
+                .blur(radius: isRecording ? 16 : (isSessionActive ? 9 : 5))
+                .opacity(isRecording ? 0.75 : (isSessionActive ? 0.45 : 0.25))
 
             if isRecording {
                 segmentRing
@@ -205,9 +199,8 @@ struct MicOrb: View {
                     endPoint: .bottomTrailing
                 ))
                 .frame(width: baseSize - 8, height: baseSize - 8)
-                .scaleEffect(isRecording ? 1.0 + CGFloat(level) * 0.08 : 1.0)
+                .scaleEffect(breathe ? 1.04 : 1.0)
                 .shadow(color: orbColor.opacity(0.55), radius: 5, y: 1)
-                .animation(.easeOut(duration: 0.08), value: level)
 
             icon
                 .font(.system(size: 28, weight: .semibold))
@@ -219,6 +212,9 @@ struct MicOrb: View {
             rippleB = true
             withAnimation(.linear(duration: 8).repeatForever(autoreverses: false)) {
                 rotation = 360
+            }
+            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
+                breathe = true
             }
         }
     }
@@ -236,7 +232,8 @@ struct MicOrb: View {
     private var orbColor: Color {
         if isTranscribing { return Color(white: 0.55) }
         if isRecording { return Color(red: 0.95, green: 0.32, blue: 0.32) }
-        return Color(red: 0.45, green: 0.55, blue: 0.95)
+        if isSessionActive { return Color(red: 0.45, green: 0.55, blue: 0.95) }
+        return Color(red: 0.55, green: 0.55, blue: 0.6)
     }
 
     private func ripple(scale: CGFloat, opacity: Double) -> some View {
@@ -251,12 +248,11 @@ struct MicOrb: View {
             ForEach(0..<segments, id: \.self) { i in
                 let angle = Double(i) / Double(segments) * 360.0
                 Capsule()
-                    .fill(orbColor.opacity(0.65 + level * 0.35))
-                    .frame(width: 2, height: 5 + CGFloat(level) * 12)
+                    .fill(orbColor.opacity(0.7))
+                    .frame(width: 2, height: 8)
                     .offset(y: -(baseSize / 2 + 6))
                     .rotationEffect(.degrees(angle + rotation))
             }
         }
-        .animation(.easeOut(duration: 0.08), value: level)
     }
 }
