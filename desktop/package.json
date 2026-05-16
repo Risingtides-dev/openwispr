@@ -32,6 +32,8 @@
       "target": "dir",
       "icon": "build/icon.icns",
       "category": "public.app-category.productivity",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
         "LSUIElement": false,
         "NSMicrophoneUsageDescription": "openwispr needs the microphone to record your voice for transcription.",

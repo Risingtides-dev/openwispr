@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, screen, Tray, Menu, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, screen, Tray, Menu, nativeImage, shell, systemPreferences, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -258,6 +258,39 @@ function pasteAtCursor(text) {
   });
 }
 
+function getMicrophonePermission() {
+  if (process.platform !== 'darwin') return { status: 'granted', canAsk: false };
+  const status = systemPreferences.getMediaAccessStatus('microphone');
+  return { status, canAsk: status === 'not-determined' };
+}
+
+async function requestMicrophonePermission() {
+  if (process.platform !== 'darwin') return { status: 'granted', granted: true, canAsk: false };
+  const before = systemPreferences.getMediaAccessStatus('microphone');
+  const granted = before === 'granted' ? true : await systemPreferences.askForMediaAccess('microphone');
+  const status = systemPreferences.getMediaAccessStatus('microphone');
+  return { status, granted, canAsk: status === 'not-determined' };
+}
+
+function configurePermissionHandlers() {
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission, _origin, details) => {
+    if (permission === 'media') {
+      const mediaType = details?.mediaType;
+      return !mediaType || mediaType === 'audio';
+    }
+    return false;
+  });
+
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback, details) => {
+    if (permission === 'media') {
+      const mediaTypes = details?.mediaTypes || [];
+      callback(mediaTypes.length === 0 || mediaTypes.includes('audio'));
+      return;
+    }
+    callback(false);
+  });
+}
+
 ipcMain.handle('get-config', () => config);
 ipcMain.handle('save-config', (_e, newCfg) => {
   config = { ...config, ...newCfg };
@@ -284,6 +317,8 @@ ipcMain.handle('copy-text', (_e, text) => {
   if (typeof text === 'string') clipboard.writeText(text);
   return true;
 });
+ipcMain.handle('get-microphone-permission', () => getMicrophonePermission());
+ipcMain.handle('request-microphone-permission', () => requestMicrophonePermission());
 ipcMain.on('open-settings', (_e, tab) => createSettings(tab || 'settings'));
 ipcMain.on('open-external', (_e, url) => shell.openExternal(url));
 ipcMain.on('show-widget-menu', () => buildAppMenu().popup());
@@ -351,6 +386,7 @@ ipcMain.handle('transcripts-clear', () => {
 });
 
 app.whenReady().then(() => {
+  configurePermissionHandlers();
   if (process.platform === 'darwin' && app.dock) {
     const iconPath = path.join(__dirname, 'build', 'icon.png');
     if (fs.existsSync(iconPath)) {
