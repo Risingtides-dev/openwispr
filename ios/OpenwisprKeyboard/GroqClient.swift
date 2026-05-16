@@ -39,8 +39,8 @@ enum GroqClient {
         let audio = try Data(contentsOf: fileURL)
 
         append("--\(boundary)\r\n")
-        append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.m4a\"\r\n")
-        append("Content-Type: audio/m4a\r\n\r\n")
+        append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n")
+        append("Content-Type: audio/wav\r\n\r\n")
         body.append(audio)
         append("\r\n")
 
