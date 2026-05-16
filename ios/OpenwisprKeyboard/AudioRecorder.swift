@@ -18,17 +18,19 @@ final class AudioRecorder: NSObject, ObservableObject {
         }
 
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
-        try session.setActive(true, options: [])
+        try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers])
+        try session.setActive(true, options: .notifyOthersOnDeactivation)
 
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("openwispr-\(UUID().uuidString).m4a")
 
+        let sessionRate = session.sampleRate > 0 ? session.sampleRate : 44_100.0
         let settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVSampleRateKey: 16_000.0,
+            AVSampleRateKey: sessionRate,
             AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue
+            AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue,
+            AVEncoderBitRateKey: 32_000
         ]
 
         let rec = try AVAudioRecorder(url: url, settings: settings)
@@ -45,7 +47,7 @@ final class AudioRecorder: NSObject, ObservableObject {
             throw NSError(
                 domain: "openwispr.recorder",
                 code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "record returned false (inputs: \(route.isEmpty ? "none" : route))"]
+                userInfo: [NSLocalizedDescriptionKey: "record returned false (inputs: \(route.isEmpty ? "none" : route), rate: \(Int(sessionRate)))"]
             )
         }
         recorder = rec
