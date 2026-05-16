@@ -22,6 +22,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.smathdaddy.openwispr.ios
         INFOPLIST_FILE: OpenwisprIOS/Info.plist
+        CODE_SIGN_ENTITLEMENTS: OpenwisprIOS/OpenwisprIOS.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
     dependencies:
       - target: OpenwisprKeyboard
@@ -35,3 +36,4 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.smathdaddy.openwispr.ios.keyboard
         INFOPLIST_FILE: OpenwisprKeyboard/Info.plist
+        CODE_SIGN_ENTITLEMENTS: OpenwisprKeyboard/OpenwisprKeyboard.entitlements

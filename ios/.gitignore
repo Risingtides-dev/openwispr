@@ -5,4 +5,6 @@ DerivedData/
 xcuserdata/
 *.xcuserstate
 .DS_Store
+Shared/Secrets.swift
+OpenwisprIOS/Secrets.swift
 OpenwisprKeyboard/Secrets.swift
