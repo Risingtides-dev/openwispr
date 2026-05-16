@@ -5,8 +5,18 @@ final class AudioRecorder: NSObject, ObservableObject {
     private var fileURL: URL?
 
     func start() throws {
+        let perm = AVAudioApplication.shared.recordPermission
+        guard perm == .granted else {
+            let label = perm == .denied ? "denied" : "not asked"
+            throw NSError(
+                domain: "openwispr.recorder",
+                code: -10,
+                userInfo: [NSLocalizedDescriptionKey: "Mic permission \(label). Open the openwispr app first."]
+            )
+        }
+
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: .default, options: [])
+        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
         try session.setActive(true, options: [])
 
         let url = FileManager.default.temporaryDirectory
@@ -20,11 +30,19 @@ final class AudioRecorder: NSObject, ObservableObject {
         ]
 
         let rec = try AVAudioRecorder(url: url, settings: settings)
+        guard rec.prepareToRecord() else {
+            throw NSError(
+                domain: "openwispr.recorder",
+                code: -3,
+                userInfo: [NSLocalizedDescriptionKey: "prepareToRecord returned false (file: \(url.lastPathComponent))"]
+            )
+        }
         guard rec.record() else {
+            let route = session.currentRoute.inputs.map { $0.portType.rawValue }.joined(separator: ",")
             throw NSError(
                 domain: "openwispr.recorder",
                 code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "AVAudioRecorder.record() returned false"]
+                userInfo: [NSLocalizedDescriptionKey: "record returned false (inputs: \(route.isEmpty ? "none" : route))"]
             )
         }
         recorder = rec
