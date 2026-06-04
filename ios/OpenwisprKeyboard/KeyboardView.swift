@@ -1,32 +1,40 @@
 import SwiftUI
+import Combine
+
+/// State + callbacks the view controller wires up. The keyboard never records;
+/// it opens the app to dictate, then inserts the text the app hands back.
+final class KeyboardModel: ObservableObject {
+    var insert: (String) -> Void = { _ in }
+    var deleteBackward: () -> Void = {}
+    var advanceToNextKeyboard: () -> Void = {}
+    var openApp: () -> Void = {}
+
+    @Published var hasFullAccess = false
+    @Published var needsInputModeSwitchKey = true
+    @Published var recents: [String] = []
+
+    func refresh() {
+        recents = SharedConfig.recentTranscripts
+    }
+}
 
 struct KeyboardView: View {
-    let insertAndCopy: (String) -> Void
-    let deleteBackward: () -> Void
-    let advanceToNextKeyboard: () -> Void
-    let hasFullAccess: Bool
-    let needsInputModeSwitchKey: Bool
-
-    @StateObject private var recorder = AudioRecorder()
-    @State private var phase: Phase = .idle
-    @State private var message: String?
-
-    enum Phase { case idle, recording, transcribing }
+    @ObservedObject var model: KeyboardModel
 
     var body: some View {
         VStack(spacing: 8) {
-            statusLine
+            recentsRow
             Spacer(minLength: 0)
             HStack(spacing: 0) {
-                if needsInputModeSwitchKey {
-                    sideButton(systemImage: "globe", action: advanceToNextKeyboard)
+                if model.needsInputModeSwitchKey {
+                    sideButton(systemImage: "globe", action: model.advanceToNextKeyboard)
                 } else {
                     Color.clear.frame(width: 56)
                 }
                 Spacer()
                 micButton
                 Spacer()
-                sideButton(systemImage: "delete.left", action: deleteBackward)
+                sideButton(systemImage: "delete.left", action: model.deleteBackward)
             }
             .padding(.horizontal, 16)
             Spacer(minLength: 0)
@@ -37,67 +45,48 @@ struct KeyboardView: View {
         .frame(height: 260)
     }
 
-    @ViewBuilder private var statusLine: some View {
-        if let message {
-            Text(message)
+    // Tap-to-insert chips of recent dictations.
+    @ViewBuilder private var recentsRow: some View {
+        if model.recents.isEmpty {
+            Text("Tap the mic to dictate in openwispr")
                 .font(.footnote)
-                .foregroundStyle(.red)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 16)
+                .foregroundStyle(.secondary)
         } else {
-            Text(phaseLabel)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var phaseLabel: String {
-        switch phase {
-        case .idle: return "Tap to record"
-        case .recording: return "Recording — tap to stop"
-        case .transcribing: return "Transcribing..."
-        }
-    }
-
-    @ViewBuilder private var helpLine: some View {
-        if !hasFullAccess {
-            Text("Turn on Allow Full Access for openwispr in Settings > General > Keyboard")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(model.recents, id: \.self) { text in
+                        Button { model.insert(text) } label: {
+                            Text(text)
+                                .lineLimit(1)
+                                .font(.callout)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: 220, alignment: .leading)
+                                .background(.quaternary, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
         }
     }
 
     private var micButton: some View {
-        Button(action: micTapped) {
+        Button(action: model.openApp) {
             ZStack {
                 Circle()
-                    .fill(micColor)
+                    .fill(Color.accentColor)
                     .frame(width: 88, height: 88)
                     .shadow(radius: 2, y: 1)
-                Group {
-                    switch phase {
-                    case .idle: Image(systemName: "mic.fill")
-                    case .recording: Image(systemName: "stop.fill")
-                    case .transcribing: ProgressView().tint(.white)
-                    }
-                }
-                .font(.system(size: 32, weight: .semibold))
-                .foregroundColor(.white)
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 32, weight: .semibold))
+                    .foregroundColor(.white)
             }
         }
         .buttonStyle(.plain)
-        .disabled(!hasFullAccess || phase == .transcribing)
-        .opacity(hasFullAccess ? 1 : 0.4)
-    }
-
-    private var micColor: Color {
-        switch phase {
-        case .idle: return .accentColor
-        case .recording: return .red
-        case .transcribing: return .gray
-        }
+        .disabled(!model.hasFullAccess)
+        .opacity(model.hasFullAccess ? 1 : 0.4)
     }
 
     private func sideButton(systemImage: String, action: @escaping () -> Void) -> some View {
@@ -110,76 +99,13 @@ struct KeyboardView: View {
         .buttonStyle(.plain)
     }
 
-    private func micTapped() {
-        message = nil
-        switch phase {
-        case .idle:
-            do {
-                try recorder.start()
-                phase = .recording
-            } catch {
-                message = "Mic error: \(error.localizedDescription)"
-            }
-        case .recording:
-            let url: URL
-            do {
-                url = try recorder.stop()
-            } catch {
-                message = "Stop error: \(error.localizedDescription)"
-                phase = .idle
-                return
-            }
-            phase = .transcribing
-            Task { await transcribe(fileURL: url) }
-        case .transcribing:
-            break
+    @ViewBuilder private var helpLine: some View {
+        if !model.hasFullAccess {
+            Text("Turn on Allow Full Access for openwispr in Settings > General > Keyboard")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
         }
-    }
-
-    private func transcribe(fileURL: URL) async {
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-
-        guard let apiKey = SharedConfig.groqApiKey, !apiKey.isEmpty else {
-            await setError("Open the openwispr app and add a Groq API key.")
-            return
-        }
-
-        do {
-            let raw = try await GroqClient.transcribe(
-                fileURL: fileURL,
-                apiKey: apiKey,
-                model: SharedConfig.transcribeModel,
-                vocabulary: SharedConfig.vocabulary
-            )
-            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else {
-                await setError("No speech detected.")
-                return
-            }
-            let final: String
-            if SharedConfig.cleanupEnabled {
-                final = (try? await GroqClient.cleanup(
-                    text: trimmed,
-                    apiKey: apiKey,
-                    model: SharedConfig.cleanupModel,
-                    systemPrompt: SharedConfig.cleanupPrompt,
-                    vocabulary: SharedConfig.vocabulary
-                )) ?? trimmed
-            } else {
-                final = trimmed
-            }
-            await MainActor.run {
-                insertAndCopy(final)
-                phase = .idle
-            }
-        } catch {
-            await setError(error.localizedDescription)
-        }
-    }
-
-    @MainActor
-    private func setError(_ text: String) {
-        message = text
-        phase = .idle
     }
 }
