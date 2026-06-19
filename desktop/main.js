@@ -354,10 +354,7 @@ ipcMain.handle('check-accessibility-permission', (_e, prompt) => checkAccessibil
 ipcMain.handle('test-automation-permission', () => testAutomationPermission());
 ipcMain.on('open-privacy-pane', (_e, pane) => openPrivacyPane(pane));
 ipcMain.on('open-settings', (_e, tab) => createSettings(tab || 'settings'));
-ipcMain.on('open-external', (_e, url) => {
-  try { if (new URL(url).protocol.match(/^https?:$/)) shell.openExternal(url); }
-  catch { /* malformed URL — ignore */ }
-});
+ipcMain.on('open-external', (_e, url) => shell.openExternal(url));
 ipcMain.on('show-widget-menu', () => buildAppMenu().popup());
 
 const NOTES_PATH = path.join(app.getPath('userData'), 'notes.json');
