@@ -170,7 +170,10 @@ final class BackgroundDictationEngine: ObservableObject {
 
     private func startAudioSessionIfNeeded() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: .measurement, options: [.duckOthers])
+        // .mixWithOthers keeps the armed mic session from pausing or ducking
+        // other apps' playback (TikTok, Music) while Windtalker idles in the
+        // background. Without it, iOS treats the record session as exclusive.
+        try session.setCategory(.record, mode: .measurement, options: [.mixWithOthers])
         try? session.setPreferredSampleRate(16_000)
         try? session.setPreferredInputNumberOfChannels(1)
         try? session.setPreferredIOBufferDuration(0.02)
