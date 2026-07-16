@@ -1,12 +1,19 @@
 import UIKit
 import SwiftUI
+import os
+
+private let keyboardLog = Logger(subsystem: "dev.smathdaddy.openwispr", category: "Keyboard")
 
 final class KeyboardViewController: UIInputViewController {
     private var hosting: UIHostingController<KeyboardView>?
     private let model = KeyboardModel()
+    private let ipcObserver = KordIPCObserver()
+    private let keyHaptic = UIImpactFeedbackGenerator(style: .light)
+    private var fallbackTimer: Timer?
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        keyboardLog.info("viewDidLoad")
 
         model.insert = { [weak self] text in
             self?.textDocumentProxy.insertText(text)
@@ -20,9 +27,23 @@ final class KeyboardViewController: UIInputViewController {
         model.openApp = { [weak self] in
             self?.openHostApp()
         }
+        model.haptic = { [weak self] in
+            self?.keyHaptic.impactOccurred()
+        }
         model.hasFullAccess = hasFullAccess
         model.needsInputModeSwitchKey = needsInputModeSwitchKey
-        model.refresh()
+        model.syncEngineState()
+        model.loadContent()
+        keyboardLog.info("loaded hasFullAccess=\(self.hasFullAccess, privacy: .public) recents=\(self.model.recents.count, privacy: .public)")
+
+        // The engine pushes results and state changes over Darwin notifications,
+        // so the keyboard reacts instantly instead of polling SQLite on a timer.
+        ipcObserver.observe(.result) { [weak self] in
+            self?.model.syncEngineState()
+        }
+        ipcObserver.observe(.state) { [weak self] in
+            self?.model.syncEngineState()
+        }
 
         let host = UIHostingController(rootView: KeyboardView(model: model))
         host.view.translatesAutoresizingMaskIntoConstraints = false
@@ -43,26 +64,41 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillAppear(animated)
         // Coming back from the app: if it left a transcript for us, insert it now.
         model.hasFullAccess = hasFullAccess
+        model.needsInputModeSwitchKey = needsInputModeSwitchKey
+        keyboardLog.info("viewWillAppear hasFullAccess=\(self.hasFullAccess, privacy: .public)")
         if let pending = SharedConfig.pendingInsert {
             SharedConfig.pendingInsert = nil
-            textDocumentProxy.insertText(pending)
+            model.insertText(pending)
+            keyboardLog.info("inserted pending text length=\(pending.count, privacy: .public)")
         }
-        model.refresh()
+        model.syncEngineState()
+        model.loadContent()
+        keyHaptic.prepare()
+        startFallbackTimer()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        fallbackTimer?.invalidate()
+        fallbackTimer = nil
+    }
+
+    /// Catches missed Darwin notifications and heartbeat staleness.
+    private func startFallbackTimer() {
+        fallbackTimer?.invalidate()
+        fallbackTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.model.hasFullAccess = self.hasFullAccess
+            self.model.syncEngineState()
+        }
     }
 
     /// Open the container app via its URL scheme so it can record + transcribe.
-    /// `openURL:` isn't exposed on UIInputViewController, so we walk the
-    /// responder chain to find an object that responds to it.
     private func openHostApp() {
-        guard let url = URL(string: "openwispr://record") else { return }
-        var responder: UIResponder? = self
-        let selector = sel_registerName("openURL:")
-        while let r = responder {
-            if r.responds(to: selector) {
-                r.perform(selector, with: url)
-                return
-            }
-            responder = r.next
+        guard let url = AppBrand.url("activate") else { return }
+        keyboardLog.info("extensionContext.open requested")
+        extensionContext?.open(url) { success in
+            keyboardLog.info("extensionContext.open completed success=\(success, privacy: .public)")
         }
     }
 }

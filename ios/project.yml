@@ -7,6 +7,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: G4889SDMJ4
     CODE_SIGN_STYLE: Automatic
     TARGETED_DEVICE_FAMILY: "1,2"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
@@ -23,9 +24,11 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.smathdaddy.openwispr.ios
         INFOPLIST_FILE: OpenwisprIOS/Info.plist
         CODE_SIGN_ENTITLEMENTS: OpenwisprIOS/OpenwisprIOS.entitlements
-        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - target: OpenwisprKeyboard
+      - target: OpenwisprShareExtension
+      - sdk: libsqlite3.tbd
   OpenwisprKeyboard:
     type: app-extension
     platform: iOS
@@ -37,3 +40,19 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.smathdaddy.openwispr.ios.keyboard
         INFOPLIST_FILE: OpenwisprKeyboard/Info.plist
         CODE_SIGN_ENTITLEMENTS: OpenwisprKeyboard/OpenwisprKeyboard.entitlements
+    dependencies:
+      - sdk: libsqlite3.tbd
+  OpenwisprShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - OpenwisprShareExtension
+      - Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.smathdaddy.openwispr.ios.share
+        INFOPLIST_FILE: OpenwisprShareExtension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: OpenwisprShareExtension/OpenwisprShareExtension.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+    dependencies:
+      - sdk: libsqlite3.tbd

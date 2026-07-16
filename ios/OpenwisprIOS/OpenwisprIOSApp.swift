@@ -1,49 +1,104 @@
 import SwiftUI
+import os
+
+private let appLog = Logger(subsystem: "dev.smathdaddy.openwispr", category: "App")
 
 @main
 struct OpenwisprIOSApp: App {
-    @State private var recordRequested = false
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var engine = BackgroundDictationEngine.shared
+    @State private var activationRequested = false
+    @State private var selectedTab: AppTab = .home
 
     var body: some Scene {
         WindowGroup {
-            RootView(recordRequested: $recordRequested)
-                .onOpenURL { url in
-                    // openwispr://record — keyboard asked us to dictate.
-                    if url.host == "record" { recordRequested = true }
+            RootView(
+                activationRequested: $activationRequested,
+                selectedTab: $selectedTab
+            )
+                .environmentObject(engine)
+                .task {
+                    await syncCloudNotes()
                 }
+                .onOpenURL { url in
+                    // kord://activate — keyboard asked us to arm the mic engine.
+                    appLog.info("onOpenURL scheme=\(url.scheme ?? "", privacy: .public) host=\(url.host ?? "", privacy: .public)")
+                    if url.isFileURL {
+                        queueOpenedDocument(url)
+                    } else if url.host == "activate" || url.host == "record" {
+                        activationRequested = true
+                        appLog.info("activationRequested=true")
+                    } else if url.host == "settings" {
+                        activationRequested = false
+                        selectedTab = .settings
+                        appLog.info("selectedTab=settings")
+                    } else if url.host == "notes" {
+                        activationRequested = false
+                        selectedTab = .notes
+                        appLog.info("selectedTab=notes")
+                    } else if url.host == "history" {
+                        activationRequested = false
+                        selectedTab = .history
+                        appLog.info("selectedTab=history")
+                    } else if url.host == "import" {
+                        activationRequested = false
+                        selectedTab = .importData
+                        appLog.info("selectedTab=import")
+                    }
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        Task { await syncCloudNotes() }
+                    }
+                }
+        }
+    }
+
+    private func syncCloudNotes() async {
+        do {
+            _ = try KordCloudNotesSync.syncFromStore()
+            appLog.info("cloud notes sync complete")
+        } catch {
+            appLog.notice("cloud notes sync skipped: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func queueOpenedDocument(_ url: URL) {
+        activationRequested = false
+        selectedTab = .importData
+
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessed {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        do {
+            _ = try SharedConfig.enqueueSharedFileImport(
+                fileURL: url,
+                suggestedName: url.lastPathComponent,
+                source: "Open in Windtalker"
+            )
+            appLog.info("opened document queued name=\(url.lastPathComponent, privacy: .public)")
+        } catch {
+            SharedConfig.requestedTab = "import"
+            appLog.error("opened document import failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 }
 
 struct RootView: View {
-    @Binding var recordRequested: Bool
+    @Binding var activationRequested: Bool
+    @Binding var selectedTab: AppTab
 
     var body: some View {
-        if recordRequested {
-            NavigationStack {
-                RecordView(
-                    cameFromKeyboard: true,
-                    onFinishedForKeyboard: {
-                        // Text is staged in the App Group; send the user back to
-                        // the app they were typing in. Suspending returns focus
-                        // to the previous foreground app, where the keyboard
-                        // auto-inserts the pending transcript.
-                        recordRequested = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            UIApplication.shared.perform(NSSelectorFromString("suspend"))
-                        }
-                    }
-                )
-                .navigationTitle("openwispr")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Done") { recordRequested = false }
-                    }
-                }
+        if activationRequested {
+            ActivationView {
+                activationRequested = false
             }
         } else {
-            ContentView()
+            ContentView(selectedTab: $selectedTab)
         }
     }
 }

@@ -22,13 +22,15 @@ keyboard uses.
 
 ## Layout
 
-- `OpenwisprIOS/` — container app: settings + the record screen (`RecordView`).
+- `OpenwisprIOS/` — container app: record, notes, history, and settings tabs.
   - `OpenwisprIOS/Core/` — app-only logic: `AudioRecorder` (AVAudioRecorder),
-    `GroqClient` (the transcribe/cleanup HTTP calls, ported from `desktop/recorder.js`).
+    `GroqClient` (the transcribe/cleanup HTTP calls, ported from `desktop/recorder.js`),
+    and `TranscriptionPipeline` (shared app-side transcription flow).
 - `OpenwisprKeyboard/` — the keyboard extension: a mic button that opens the app,
   a tap-to-insert recents row, globe + delete keys. No audio code.
 - `Shared/` — compiled into both targets: `SharedConfig` (App Group `UserDefaults`:
-  API key, models, vocabulary, recent transcripts, the pending-insert handoff flag).
+  API key, models, vocabulary, notes, full transcript history, recent transcripts,
+  and the pending-insert handoff flag).
 
 ## Build
 
@@ -69,13 +71,27 @@ another reason recording lives there.
 
 `OpenwisprIOS/Core/GroqClient.swift` is a direct port of `desktop/recorder.js`:
 
-- `transcribe` → `POST /audio/transcriptions` (multipart, `response_format=text`, `temperature=0`).
+- `transcribe` → `POST /audio/transcriptions` (multipart, `response_format=text`,
+  `temperature=0`, default `language=en`).
 - `cleanup` → `POST /chat/completions` with the same system prompt as `desktop/main.js`
   `DEFAULT_CONFIG.cleanupPrompt`, wrapping the transcript in `<transcript>...</transcript>`.
 
 If you tweak prompts or models in the desktop app, mirror the change here. The two clients
 intentionally don't share code yet (AGENTS.md recommends extracting to `~/openwispr/shared/`
 once both apps are live).
+
+## Desktop data import
+
+The iOS app can import desktop data from the App Group container:
+
+- `config.json` — models, cleanup prompt, vocabulary, and API key if the phone does not
+  already have one saved.
+- `notes.json` — desktop notes.
+- `transcripts.json` — desktop dictation history.
+
+Copy those files into `group.dev.smathdaddy.openwispr` with `devicectl`, then launch the
+app or tap **Settings > Import copied desktop data**. Imports merge by ID, so repeated
+imports do not duplicate existing notes or transcript history.
 
 ## Roadmap
 

@@ -5,3 +5,6 @@ DerivedData/
 xcuserdata/
 *.xcuserstate
 .DS_Store
+device-build/
+local-device-build/
+mcp-derived-data/

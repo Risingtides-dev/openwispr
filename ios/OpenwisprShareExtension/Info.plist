@@ -24,21 +24,22 @@
 	<dict>
 		<key>NSExtensionAttributes</key>
 		<dict>
-			<key>IsASCIICapable</key>
-			<false/>
-			<key>PrefersRightToLeft</key>
-			<false/>
-			<key>PrimaryLanguage</key>
-			<string>en-US</string>
-			<key>RequestsOpenAccess</key>
-			<true/>
+			<key>NSExtensionActivationRule</key>
+			<dict>
+				<key>NSExtensionActivationSupportsFileWithMaxCount</key>
+				<integer>1</integer>
+				<key>NSExtensionActivationSupportsMovieWithMaxCount</key>
+				<integer>1</integer>
+				<key>NSExtensionActivationSupportsText</key>
+				<true/>
+				<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
+				<integer>1</integer>
+			</dict>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>
-		<string>com.apple.keyboard-service</string>
+		<string>com.apple.share-services</string>
 		<key>NSExtensionPrincipalClass</key>
-		<string>$(PRODUCT_MODULE_NAME).KeyboardViewController</string>
+		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
 	</dict>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Kord records your voice and sends it to Groq for transcription.</string>
 </dict>
 </plist>

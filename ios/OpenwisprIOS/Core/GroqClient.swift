@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let groqLog = Logger(subsystem: "dev.smathdaddy.openwispr", category: "GroqClient")
 
 enum GroqError: LocalizedError {
     case http(Int, String)
@@ -22,6 +25,7 @@ enum GroqClient {
         fileURL: URL,
         apiKey: String,
         model: String,
+        language: String,
         vocabulary: String
     ) async throws -> String {
         let url = base.appendingPathComponent("audio/transcriptions")
@@ -37,10 +41,12 @@ enum GroqClient {
             if let d = s.data(using: .utf8) { body.append(d) }
         }
         let audio = try Data(contentsOf: fileURL)
+        groqLog.info("stt request body audioBytes=\(audio.count, privacy: .public) model=\(model, privacy: .public)")
 
+        let fileName = "audio.\(fileURL.pathExtension.isEmpty ? "m4a" : fileURL.pathExtension)"
         append("--\(boundary)\r\n")
-        append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.m4a\"\r\n")
-        append("Content-Type: audio/m4a\r\n\r\n")
+        append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n")
+        append("Content-Type: \(mimeType(for: fileURL))\r\n\r\n")
         body.append(audio)
         append("\r\n")
 
@@ -52,6 +58,10 @@ enum GroqClient {
         field("model", model)
         field("response_format", "text")
         field("temperature", "0")
+        let languageCode = language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !languageCode.isEmpty {
+            field("language", languageCode)
+        }
         let vocab = vocabulary.trimmingCharacters(in: .whitespacesAndNewlines)
         if !vocab.isEmpty {
             field("prompt", "Glossary of terms that may appear: \(vocab).")
@@ -59,8 +69,11 @@ enum GroqClient {
         append("--\(boundary)--\r\n")
         req.httpBody = body
 
+        let started = Date()
         let (data, resp) = try await URLSession.shared.data(for: req)
+        let elapsedMs = Date().timeIntervalSince(started) * 1000
         try check(resp: resp, data: data)
+        groqLog.info("stt response bytes=\(data.count, privacy: .public) elapsedMs=\(elapsedMs, privacy: .public)")
         return String(data: data, encoding: .utf8) ?? ""
     }
 
@@ -91,9 +104,13 @@ enum GroqClient {
             ]
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        groqLog.info("cleanup request inputChars=\(text.count, privacy: .public) model=\(model, privacy: .public)")
 
+        let started = Date()
         let (data, resp) = try await URLSession.shared.data(for: req)
+        let elapsedMs = Date().timeIntervalSince(started) * 1000
         try check(resp: resp, data: data)
+        groqLog.info("cleanup response bytes=\(data.count, privacy: .public) elapsedMs=\(elapsedMs, privacy: .public)")
 
         struct Resp: Decodable {
             struct Choice: Decodable {
@@ -116,6 +133,16 @@ enum GroqClient {
         guard let http = resp as? HTTPURLResponse else { throw GroqError.decode }
         guard (200..<300).contains(http.statusCode) else {
             throw GroqError.http(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+        }
+    }
+
+    private static func mimeType(for fileURL: URL) -> String {
+        switch fileURL.pathExtension.lowercased() {
+        case "m4a": return "audio/m4a"
+        case "wav": return "audio/wav"
+        case "mp3": return "audio/mpeg"
+        case "webm": return "audio/webm"
+        default: return "application/octet-stream"
         }
     }
 }
