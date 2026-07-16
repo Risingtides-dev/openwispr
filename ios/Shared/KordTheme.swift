@@ -24,29 +24,31 @@ enum KordTheme {
     static let muted = Color(hex: 0x909098)
     static let faint = Color(hex: 0x5A5C63)
 
-    // MARK: Accent
-    static let magenta = Color(hex: 0xE100C3)
-    static let purple = Color(hex: 0x8500D7)
-    /// Legacy accent name; now points at brand magenta.
-    static let ember = magenta
-    static let live = Color(hex: 0x1ED760)
+    // MARK: Accent — monochrome. The accent IS white; hierarchy comes from
+    // surface contrast, not hue.
+    static let accent = Color(hex: 0xFAFCFF)
+    /// Legacy names kept so call sites stay stable.
+    static let magenta = accent
+    static let purple = Color(hex: 0xD8DADE)
+    static let ember = accent
+    static let live = Color(hex: 0xFAFCFF)
     static let danger = Color(hex: 0xFF3B3B)
 
     static let accentGradient = LinearGradient(
-        colors: [magenta, purple],
+        colors: [accent, purple],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
     static let accentGradientHorizontal = LinearGradient(
-        colors: [magenta, purple],
+        colors: [accent, purple],
         startPoint: .leading,
         endPoint: .trailing
     )
 
-    /// Soft accent wash for backgrounds behind active elements.
+    /// Soft wash for backgrounds behind active elements.
     static let accentWash = LinearGradient(
-        colors: [magenta.opacity(0.16), purple.opacity(0.10)],
+        colors: [accent.opacity(0.10), accent.opacity(0.04)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
@@ -57,8 +59,8 @@ enum KordTheme {
     static let radiusLarge: CGFloat = 20
 
     // MARK: Type
-    static func display(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
-        .system(size: size, weight: weight, design: .rounded)
+    static func display(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
+        .system(size: size, weight: weight)
     }
 
     static func title(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
@@ -114,7 +116,7 @@ struct KordAccentPanel: ViewModifier {
             .background(KordTheme.accentWash)
             .overlay {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(KordTheme.magenta.opacity(0.35), lineWidth: 1)
+                    .strokeBorder(KordTheme.borderStrong, lineWidth: 1)
             }
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
     }
@@ -132,12 +134,12 @@ extension View {
 
 // MARK: - Buttons
 
-/// Filled gradient pill — the primary call to action.
+/// Filled white pill — the primary call to action.
 struct KordPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(KordTheme.label(16))
-            .foregroundStyle(.white)
+            .foregroundStyle(KordTheme.void)
             .padding(.horizontal, 20)
             .padding(.vertical, 13)
             .frame(maxWidth: .infinity)

@@ -14,6 +14,7 @@ struct RecordView: View {
     /// so the app can bounce the user back to where they were typing.
     var onFinishedForKeyboard: (() -> Void)?
 
+    @EnvironmentObject private var engine: BackgroundDictationEngine
     @StateObject private var recorder = AudioRecorder()
     @State private var phase: Phase = .idle
     @State private var message: String?
@@ -27,49 +28,65 @@ struct RecordView: View {
             KordTheme.void
                 .ignoresSafeArea()
 
-            VStack(spacing: 24) {
-                Spacer(minLength: 24)
+            VStack(spacing: 0) {
+                enginePill
+                    .padding(.top, 18)
 
-                VStack(spacing: 10) {
-                    Image("KordMark")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 72, height: 72)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .strokeBorder(KordTheme.borderMuted, lineWidth: 1)
-                        }
+                Spacer()
 
-                    Text(AppBrand.name)
-                        .font(KordTheme.display(26))
-                        .foregroundStyle(KordTheme.text)
-                    Text(AppBrand.tagline)
-                        .font(KordTheme.body(14, weight: .medium))
-                        .foregroundStyle(KordTheme.accentGradientHorizontal)
+                VStack(spacing: 28) {
+                    micButton
+                    statusLine
                 }
 
-                statusLine
-                micButton
+                Spacer()
 
                 if let lastTranscript {
                     Text(lastTranscript)
-                        .font(KordTheme.body(17))
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(KordTheme.text)
+                        .font(KordTheme.body(16))
+                        .foregroundStyle(KordTheme.secondary)
+                        .lineLimit(4)
                         .padding(16)
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .kordPanel()
-                        .padding(.horizontal)
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 18)
                 }
-
-                Spacer(minLength: 24)
             }
         }
+        .toolbar(.hidden, for: .navigationBar)
         .onAppear {
             recordLog.info("onAppear cameFromKeyboard=\(cameFromKeyboard, privacy: .public) phase=\(String(describing: phase), privacy: .public)")
             if cameFromKeyboard && phase == .idle { start() }
         }
+    }
+
+    /// Engine status + arm/disarm in one control.
+    private var enginePill: some View {
+        Button {
+            if engine.status == .inactive {
+                engine.activate()
+            } else {
+                _ = SharedConfig.issueDictationCommand(.deactivate)
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(engine.status == .inactive ? KordTheme.faint : KordTheme.live)
+                    .frame(width: 8, height: 8)
+                Text(engine.status == .inactive ? "Keyboard engine off" : "Keyboard engine on")
+                    .font(KordTheme.label(13, weight: .medium))
+                    .foregroundStyle(KordTheme.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(KordTheme.raised)
+            .clipShape(Capsule())
+            .overlay {
+                Capsule().strokeBorder(KordTheme.borderSubtle, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder private var statusLine: some View {
@@ -96,31 +113,27 @@ struct RecordView: View {
             ZStack {
                 if phase == .recording {
                     Circle()
-                        .fill(KordTheme.magenta.opacity(0.22))
+                        .fill(Color.white.opacity(0.10))
                         .frame(width: 168, height: 168)
                         .scaleEffect(pulse ? 1.06 : 0.92)
                         .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)
                 }
 
                 Circle()
-                    .fill(phase == .idle ? AnyShapeStyle(KordTheme.accentGradient) : AnyShapeStyle(KordTheme.elevated))
+                    .fill(phase == .idle ? KordTheme.text : KordTheme.elevated)
                     .frame(width: 128, height: 128)
                     .overlay {
                         Circle().strokeBorder(
-                            phase == .recording ? KordTheme.magenta : KordTheme.borderMuted,
+                            phase == .recording ? KordTheme.text : KordTheme.borderMuted,
                             lineWidth: phase == .recording ? 2 : 1
                         )
                     }
-                    .shadow(
-                        color: phase == .idle ? KordTheme.purple.opacity(0.45) : .black.opacity(0.4),
-                        radius: 22,
-                        y: 10
-                    )
+                    .shadow(color: .black.opacity(0.5), radius: 22, y: 10)
 
                 switch phase {
-                case .idle: Image(systemName: "mic.fill").font(.system(size: 42, weight: .semibold)).foregroundColor(.white)
-                case .recording: Image(systemName: "stop.fill").font(.system(size: 40, weight: .semibold)).foregroundStyle(KordTheme.accentGradient)
-                case .transcribing: ProgressView().tint(KordTheme.magenta).scaleEffect(1.3)
+                case .idle: Image(systemName: "mic.fill").font(.system(size: 42, weight: .semibold)).foregroundStyle(KordTheme.void)
+                case .recording: Image(systemName: "stop.fill").font(.system(size: 40, weight: .semibold)).foregroundStyle(KordTheme.text)
+                case .transcribing: ProgressView().tint(KordTheme.text).scaleEffect(1.3)
                 }
             }
         }

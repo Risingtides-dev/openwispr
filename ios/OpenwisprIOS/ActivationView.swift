@@ -9,9 +9,9 @@ struct ActivationView: View {
             KordTheme.void
                 .ignoresSafeArea()
 
-            // Soft brand glow behind the content.
+            // Soft glow behind the content.
             Circle()
-                .fill(KordTheme.purple.opacity(0.18))
+                .fill(Color.white.opacity(0.05))
                 .frame(width: 420, height: 420)
                 .blur(radius: 90)
                 .offset(y: -140)

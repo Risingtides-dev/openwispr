@@ -453,17 +453,17 @@ struct KeyboardView: View {
                     .font(.system(size: 15, weight: .bold))
             }
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(style == .filled ? KordTheme.void : KordTheme.text)
         .padding(.horizontal, 16)
         .frame(height: 40)
         .background {
             if style == .filled {
-                Capsule().fill(KordTheme.accentGradient)
+                Capsule().fill(KordTheme.text)
             } else {
                 Capsule()
                     .fill(KordTheme.raised)
                     .overlay {
-                        Capsule().strokeBorder(KordTheme.magenta.opacity(0.6), lineWidth: 1)
+                        Capsule().strokeBorder(KordTheme.borderStrong, lineWidth: 1)
                     }
             }
         }
@@ -538,11 +538,11 @@ struct KeyboardView: View {
 
     private func toggleShape(isOn: Bool) -> some View {
         Capsule()
-            .fill(isOn ? AnyShapeStyle(KordTheme.accentGradient) : AnyShapeStyle(KordTheme.elevated))
+            .fill(isOn ? KordTheme.text : KordTheme.elevated)
             .frame(width: 64, height: 36)
             .overlay(alignment: isOn ? .trailing : .leading) {
                 Circle()
-                    .fill(.white)
+                    .fill(isOn ? KordTheme.void : KordTheme.text)
                     .frame(width: 28, height: 28)
                     .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
                     .padding(.horizontal, 4)
@@ -803,10 +803,10 @@ struct KeyboardView: View {
         Button(action: model.insertReturn) {
             Image(systemName: "return")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(KordTheme.void)
                 .frame(maxWidth: .infinity)
                 .frame(height: KeyStyle.height)
-                .background(KordTheme.accentGradient)
+                .background(KordTheme.text)
                 .clipShape(RoundedRectangle(cornerRadius: KeyStyle.radius, style: .continuous))
         }
         .buttonStyle(.plain)

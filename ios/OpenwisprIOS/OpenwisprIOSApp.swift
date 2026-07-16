@@ -8,42 +8,39 @@ struct OpenwisprIOSApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var engine = BackgroundDictationEngine.shared
     @State private var activationRequested = false
-    @State private var selectedTab: AppTab = .home
+    @State private var selectedTab: AppTab = .record
+    @State private var showImport = false
 
     var body: some Scene {
         WindowGroup {
             RootView(
                 activationRequested: $activationRequested,
-                selectedTab: $selectedTab
+                selectedTab: $selectedTab,
+                showImport: $showImport
             )
                 .environmentObject(engine)
                 .task {
                     await syncCloudNotes()
                 }
                 .onOpenURL { url in
-                    // kord://activate — keyboard asked us to arm the mic engine.
+                    // windtalker://activate — keyboard asked us to arm the mic engine.
                     appLog.info("onOpenURL scheme=\(url.scheme ?? "", privacy: .public) host=\(url.host ?? "", privacy: .public)")
                     if url.isFileURL {
                         queueOpenedDocument(url)
                     } else if url.host == "activate" || url.host == "record" {
                         activationRequested = true
-                        appLog.info("activationRequested=true")
                     } else if url.host == "settings" {
                         activationRequested = false
                         selectedTab = .settings
-                        appLog.info("selectedTab=settings")
                     } else if url.host == "notes" {
                         activationRequested = false
                         selectedTab = .notes
-                        appLog.info("selectedTab=notes")
                     } else if url.host == "history" {
                         activationRequested = false
                         selectedTab = .history
-                        appLog.info("selectedTab=history")
                     } else if url.host == "import" {
                         activationRequested = false
-                        selectedTab = .importData
-                        appLog.info("selectedTab=import")
+                        showImport = true
                     }
                 }
                 .onChange(of: scenePhase) { _, phase in
@@ -65,7 +62,6 @@ struct OpenwisprIOSApp: App {
 
     private func queueOpenedDocument(_ url: URL) {
         activationRequested = false
-        selectedTab = .importData
 
         let accessed = url.startAccessingSecurityScopedResource()
         defer {
@@ -82,15 +78,16 @@ struct OpenwisprIOSApp: App {
             )
             appLog.info("opened document queued name=\(url.lastPathComponent, privacy: .public)")
         } catch {
-            SharedConfig.requestedTab = "import"
             appLog.error("opened document import failed: \(error.localizedDescription, privacy: .public)")
         }
+        showImport = true
     }
 }
 
 struct RootView: View {
     @Binding var activationRequested: Bool
     @Binding var selectedTab: AppTab
+    @Binding var showImport: Bool
 
     var body: some View {
         if activationRequested {
@@ -98,7 +95,7 @@ struct RootView: View {
                 activationRequested = false
             }
         } else {
-            ContentView(selectedTab: $selectedTab)
+            ContentView(selectedTab: $selectedTab, showImport: $showImport)
         }
     }
 }
